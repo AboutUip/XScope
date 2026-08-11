@@ -15,9 +15,14 @@
         MinWidth="900"
         Icon="pack://application:,,,/Assets/xscope.ico"
         Style="{StaticResource MaterialDesignWindow}"
-        TextElement.Foreground="#202124"
-        Background="#FFFFFF"
-        FontFamily="Segoe UI, Microsoft YaHei UI">
+        TextElement.Foreground="{DynamicResource XScopeTextPrimary}"
+        Background="{DynamicResource XScopeSurfaceAlt}"
+        BorderBrush="{DynamicResource XScopeSurfaceAlt}"
+        BorderThickness="0"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        FocusVisualStyle="{x:Null}"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
     <Window.Resources>
         <!-- Google Drive-like overflow (⋮) on project rows -->
         <Style x:Key="ProjectMoreButton" TargetType="Button">
@@ -43,10 +48,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E8EAED" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeBorder}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#DADCE0" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeBorder}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -66,8 +71,8 @@
         </Style>
 
         <Style x:Key="ProjectMoreMenu" TargetType="ContextMenu">
-            <Setter Property="Background" Value="#FFFFFF" />
-            <Setter Property="BorderBrush" Value="#DADCE0" />
+            <Setter Property="Background" Value="{DynamicResource XScopeSurfaceAlt}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource XScopeBorder}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="0,6" />
             <Setter Property="HasDropShadow" Value="True" />
@@ -84,7 +89,7 @@
                                 <DropShadowEffect BlurRadius="16"
                                                   ShadowDepth="2"
                                                   Opacity="0.18"
-                                                  Color="#202124" />
+                                                  Color="#000000" />
                             </Border.Effect>
                             <StackPanel IsItemsHost="True"
                                         KeyboardNavigation.DirectionalNavigation="Cycle" />
@@ -96,7 +101,7 @@
 
         <Style x:Key="ProjectMoreMenuItem" TargetType="MenuItem">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#202124" />
+            <Setter Property="Foreground" Value="{DynamicResource XScopeTextPrimary}" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Padding" Value="16,8" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
@@ -114,7 +119,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeHover}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45" />
@@ -136,8 +141,8 @@
         </Grid.ColumnDefinitions>
 
         <Border Grid.Column="0"
-                Background="#F8F9FA"
-                BorderBrush="#E8EAED"
+                Background="{DynamicResource XScopeSurface}"
+                BorderBrush="{DynamicResource XScopeBorder}"
                 BorderThickness="0,0,1,0">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Top" Margin="16,20,16,8">
@@ -145,12 +150,12 @@
                                Margin="4,0,0,0"
                                FontSize="18"
                                FontWeight="SemiBold"
-                               Foreground="#202124" />
+                               Foreground="{DynamicResource XScopeTextPrimary}" />
                     <TextBlock Text="{Binding L.MainProjects}"
                                Margin="4,18,0,4"
                                FontSize="12"
                                FontWeight="SemiBold"
-                               Foreground="#5F6368" />
+                               Foreground="{DynamicResource XScopeTextSecondary}" />
                 </StackPanel>
 
                 <!-- Bottom rail: full-width quiet Google outline -->
@@ -167,8 +172,8 @@
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
                             <Border x:Name="Bd"
-                                    Background="#FFFFFF"
-                                    BorderBrush="#DADCE0"
+                                    Background="{DynamicResource XScopeSurfaceAlt}"
+                                    BorderBrush="{DynamicResource XScopeBorder}"
                                     BorderThickness="1"
                                     CornerRadius="20"
                                     Padding="12,0">
@@ -179,22 +184,22 @@
                                                              Width="18"
                                                              Height="18"
                                                              VerticalAlignment="Center"
-                                                             Foreground="#5F6368"
+                                                             Foreground="{DynamicResource XScopeTextSecondary}"
                                                              Margin="0,0,8,0" />
                                     <TextBlock Text="{Binding DataContext.L.MainNewProject, RelativeSource={RelativeSource AncestorType=Button}}"
                                                VerticalAlignment="Center"
-                                               Foreground="#3C4043"
+                                               Foreground="{DynamicResource XScopeTextPrimary}"
                                                FontSize="14"
                                                FontWeight="SemiBold" />
                                 </StackPanel>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#F8F9FA" />
-                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#BDC1C6" />
+                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeSurface}" />
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource XScopeBorder}" />
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeHover}" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -226,10 +231,10 @@
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="#EFEFEF" />
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeHover}" />
                                             </Trigger>
                                             <Trigger Property="IsSelected" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="#E8F0FE" />
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeAccentSoft}" />
                                             </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
@@ -253,12 +258,12 @@
                                                                  Height="12"
                                                                  Margin="0,2,6,0"
                                                                  VerticalAlignment="Center"
-                                                                 Foreground="#1A73E8"
+                                                                 Foreground="{DynamicResource XScopeAccent}"
                                                                  Visibility="{Binding Pinned, Converter={StaticResource XScopeBoolToVis}}" />
                                         <TextBlock Text="{Binding Title}"
                                                    FontSize="14"
                                                    FontWeight="Medium"
-                                                   Foreground="#3C4043"
+                                                   Foreground="{DynamicResource XScopeTextPrimary}"
                                                    TextDecorations="None"
                                                    TextTrimming="CharacterEllipsis"
                                                    TextWrapping="NoWrap" />
@@ -266,7 +271,7 @@
                                     <TextBlock Text="{Binding Subtitle}"
                                                Margin="0,2,0,0"
                                                FontSize="12"
-                                               Foreground="#5F6368"
+                                               Foreground="{DynamicResource XScopeTextSecondary}"
                                                TextDecorations="None" />
                                 </StackPanel>
                                 <Button Grid.Column="1"
@@ -285,7 +290,7 @@
                                                       Header="{Binding PlacementTarget.Tag.L.ProjectTogglePin, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       Command="{Binding PlacementTarget.Tag.TogglePinCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                            <Separator Margin="12,4" Background="#E8EAED" />
+                                            <Separator Margin="12,4" Background="{DynamicResource XScopeBorder}" />
                                             <MenuItem Style="{StaticResource ProjectMoreMenuItemDanger}"
                                                       Header="{Binding PlacementTarget.Tag.L.ProjectDelete, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       Command="{Binding PlacementTarget.Tag.DeleteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -295,7 +300,7 @@
                                     <materialDesign:PackIcon Kind="DotsVertical"
                                                              Width="16"
                                                              Height="16"
-                                                             Foreground="#5F6368" />
+                                                             Foreground="{DynamicResource XScopeTextSecondary}" />
                                 </Button>
                             </Grid>
                         </DataTemplate>
@@ -304,9 +309,15 @@
             </DockPanel>
         </Border>
 
-        <Grid Grid.Column="1" Background="#FFFFFF">
+        <Grid Grid.Column="1" Background="{DynamicResource XScopeSurfaceAlt}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
             <!-- Home: ephemeral new project -->
-            <StackPanel VerticalAlignment="Center"
+            <StackPanel Grid.Row="0"
+                        VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Width="640"
                         Margin="0,0,0,48"
@@ -316,7 +327,7 @@
                            FontSize="56"
                            FontWeight="SemiBold"
                            HorizontalAlignment="Center"
-                           Foreground="#202124"
+                           Foreground="{DynamicResource XScopeTextPrimary}"
                            Margin="0,0,0,28" />
 
                 <controls:SearchComposePanel />
@@ -325,7 +336,7 @@
                            Margin="0,18,0,0"
                            HorizontalAlignment="Center"
                            FontSize="13"
-                           Foreground="#80868B" />
+                           Foreground="{DynamicResource XScopeTextMuted}" />
                 <TextBlock Text="{Binding StatusText}"
                            Margin="0,10,0,0"
                            HorizontalAlignment="Center"
@@ -334,98 +345,301 @@
                            TextWrapping="Wrap" />
             </StackPanel>
 
-            <!-- Research project workspace -->
-            <Grid Visibility="{Binding IsResearch, Converter={StaticResource XScopeBoolToVis}}">
+            <!-- Research project workspace + insights rail (side-by-side, no overlay) -->
+            <Grid Grid.Row="0"
+                  Visibility="{Binding IsResearch, Converter={StaticResource XScopeBoolToVis}}"
+                  Focusable="False"
+                  FocusVisualStyle="{x:Null}"
+                  ClipToBounds="True">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <ScrollViewer Grid.Column="0"
-                              Margin="48,40,20,40"
+                <!-- Main research column: content centers within remaining width -->
+                <Grid Grid.Column="0"
+                      Focusable="False"
+                      FocusVisualStyle="{x:Null}"
+                      ClipToBounds="True">
+                <ScrollViewer x:Name="ResearchWorkspaceScroll"
+                              Margin="{Binding ResearchWorkspaceMargin}"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
-                              Padding="0,0,12,0">
-                    <StackPanel MaxWidth="680"
-                                HorizontalAlignment="Center">
-                        <!-- Header: product title + meta chips (no dump card) -->
+                              Padding="0,0,10,0"
+                              Focusable="False"
+                              FocusVisualStyle="{x:Null}"
+                              PreviewMouseWheel="ResearchWorkspaceScroll_OnPreviewMouseWheel"
+                              ScrollChanged="ResearchWorkspaceScroll_OnScrollChanged">
+                    <StackPanel MaxWidth="920"
+                                HorizontalAlignment="Stretch">
+                        <!-- Header -->
                         <TextBlock Text="{Binding L.MainResearchHint}"
                                    FontSize="12"
                                    FontWeight="SemiBold"
-                                   Foreground="#80868B" />
+                                   Foreground="{DynamicResource XScopeTextMuted}" />
                         <TextBlock Text="{Binding ActiveProjectTitle}"
                                    Margin="0,6,0,0"
                                    FontFamily="Bahnschrift, Segoe UI"
                                    FontSize="30"
                                    FontWeight="SemiBold"
-                                   Foreground="#202124"
+                                   Foreground="{DynamicResource XScopeTextPrimary}"
                                    TextWrapping="Wrap" />
 
                         <WrapPanel Margin="0,14,0,0">
                             <Border Margin="0,0,8,8"
                                     Padding="10,5"
-                                    Background="#F1F3F4"
+                                    Background="{DynamicResource XScopeHover}"
                                     CornerRadius="999">
-                                <TextBlock FontSize="12" Foreground="#3C4043">
+                                <TextBlock FontSize="12" Foreground="{DynamicResource XScopeTextPrimary}">
                                     <Run Text="{Binding ActiveProviderLabel, Mode=OneWay}" />
                                 </TextBlock>
                             </Border>
                             <Border Margin="0,0,8,8"
                                     Padding="10,5"
-                                    Background="#F1F3F4"
+                                    Background="{DynamicResource XScopeHover}"
                                     CornerRadius="999">
-                                <TextBlock FontSize="12" Foreground="#3C4043"
+                                <TextBlock FontSize="12" Foreground="{DynamicResource XScopeTextPrimary}"
                                            Text="{Binding ActiveModelLabel, Mode=OneWay}" />
                             </Border>
                             <Border Margin="0,0,8,8"
                                     Padding="10,5"
-                                    Background="#E8F0FE"
+                                    Background="{DynamicResource XScopeAccentSoft}"
                                     CornerRadius="999">
                                 <TextBlock FontSize="12"
                                            FontWeight="SemiBold"
-                                           Foreground="#174EA6"
+                                           Foreground="{DynamicResource XScopeAccentText}"
                                            Text="{Binding ActivePrecisionLabel, Mode=OneWay}" />
                             </Border>
                         </WrapPanel>
 
                         <controls:SearchComposePanel Compact="True"
                                                      Margin="0,8,0,28"
-                                                     HorizontalAlignment="Stretch" />
+                                                     HorizontalAlignment="Stretch"
+                                                     Visibility="{Binding Research.ShowTopCompose, Converter={StaticResource XScopeBoolToVis}}" />
 
-                        <!-- Stage: busy discovery -->
-                        <Border Padding="0,4,0,0"
-                                Visibility="{Binding Research.ShowBusyStage, Converter={StaticResource XScopeBoolToVis}}">
-                            <StackPanel Orientation="Horizontal">
-                                <Border Width="3"
-                                        Height="36"
-                                        CornerRadius="2"
-                                        Background="#1A73E8"
+                        <!-- Cursor-style conversation stream (from discovery onward) -->
+                        <StackPanel Visibility="{Binding Research.ShowChatStream, Converter={StaticResource XScopeBoolToVis}}">
+                            <DockPanel Margin="0,0,0,12" LastChildFill="True">
+                                <Button DockPanel.Dock="Right"
+                                        Margin="12,0,0,0"
+                                        Padding="12,4"
                                         VerticalAlignment="Center"
-                                        Margin="0,0,14,0" />
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Research.StatusLabel}"
-                                               FontSize="15"
-                                               FontWeight="SemiBold"
-                                               Foreground="#202124"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding L.ResearchBusyHint}"
-                                               Margin="0,4,0,0"
-                                               FontSize="13"
-                                               Foreground="#5F6368"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
+                                        Command="{Binding DataContext.Research.CancelCommand, ElementName=ShellRoot}"
+                                        Visibility="{Binding DataContext.Research.IsRunning, ElementName=ShellRoot, Converter={StaticResource XScopeBoolToVis}}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Content="{Binding DataContext.L.ResearchCancel, ElementName=ShellRoot}" />
+                                <TextBlock Text="{Binding Research.StatusLabel}"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource XScopeTextMuted}"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
+                            </DockPanel>
 
-                        <!-- Stage: pick a direction -->
-                        <Border Visibility="{Binding Research.IsWaitingUser, Converter={StaticResource XScopeBoolToVis}}">
+                            <ItemsControl x:Name="ResearchChatList"
+                                          ItemsSource="{Binding Research.Feed}">
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter">
+                                        <Setter Property="Margin" Value="0,0,0,14" />
+                                    </Style>
+                                </ItemsControl.ItemContainerStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <!-- Thinking — Cursor-like assistant prose -->
+                                            <StackPanel Visibility="{Binding IsThinking, Converter={StaticResource XScopeBoolToVis}}">
+                                                <TextBlock Text="{Binding Title}"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource XScopeTextMuted}"
+                                                           Margin="0,0,0,6" />
+                                                <TextBlock Text="{Binding Body}"
+                                                           FontSize="14"
+                                                           LineHeight="22"
+                                                           Foreground="{DynamicResource XScopeTextPrimary}"
+                                                           TextWrapping="Wrap"
+                                                           Opacity="0.92" />
+                                            </StackPanel>
+
+                                            <!-- User message -->
+                                            <Border Padding="12,10"
+                                                    Background="{DynamicResource XScopeAccentSoft}"
+                                                    CornerRadius="12"
+                                                    HorizontalAlignment="Right"
+                                                    MaxWidth="520"
+                                                    Visibility="{Binding IsUser, Converter={StaticResource XScopeBoolToVis}}">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource XScopeAccentText}"
+                                                               Margin="0,0,0,4" />
+                                                    <TextBlock Text="{Binding Body}"
+                                                               FontSize="14"
+                                                               Foreground="{DynamicResource XScopeTextPrimary}"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Search (hits nested inside, collapsed by default) -->
+                                            <Border Padding="12,10"
+                                                    Background="{DynamicResource XScopeSurface}"
+                                                    BorderBrush="{DynamicResource XScopeBorder}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="10"
+                                                    Visibility="{Binding IsSearch, Converter={StaticResource XScopeBoolToVis}}">
+                                                <StackPanel>
+                                                    <DockPanel LastChildFill="True">
+                                                        <materialDesign:PackIcon DockPanel.Dock="Left"
+                                                                                 Kind="Magnify"
+                                                                                 Width="16"
+                                                                                 Height="16"
+                                                                                 Margin="0,1,10,0"
+                                                                                 VerticalAlignment="Top"
+                                                                                 Foreground="{DynamicResource XScopeTextSecondary}" />
+                                                        <StackPanel>
+                                                            <TextBlock FontSize="12" Foreground="{DynamicResource XScopeTextSecondary}">
+                                                                <Run FontWeight="SemiBold" Text="{Binding Title}" />
+                                                                <Run Text="  " />
+                                                                <Run Text="{Binding Meta}" />
+                                                            </TextBlock>
+                                                            <TextBlock Text="{Binding Body}"
+                                                                       Margin="0,4,0,0"
+                                                                       FontSize="13"
+                                                                       FontFamily="Consolas, Cascadia Mono, Microsoft YaHei UI"
+                                                                       Foreground="{DynamicResource XScopeTextPrimary}"
+                                                                       TextWrapping="Wrap" />
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                    <Expander Margin="26,8,0,0"
+                                                              IsExpanded="{Binding HitsExpanded, Mode=TwoWay}"
+                                                              Visibility="{Binding HasHits, Converter={StaticResource XScopeBoolToVis}}">
+                                                        <Expander.Header>
+                                                            <TextBlock FontSize="12"
+                                                                       Foreground="{DynamicResource XScopeTextSecondary}"
+                                                                       Text="{Binding HitsCountLabel}" />
+                                                        </Expander.Header>
+                                                        <ItemsControl ItemsSource="{Binding Hits}" Margin="0,6,0,0">
+                                                            <ItemsControl.ItemContainerStyle>
+                                                                <Style TargetType="ContentPresenter">
+                                                                    <Setter Property="Margin" Value="0,0,0,8" />
+                                                                </Style>
+                                                            </ItemsControl.ItemContainerStyle>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Padding="10,8"
+                                                                            Background="{DynamicResource XScopeSurfaceAlt}"
+                                                                            BorderBrush="{DynamicResource XScopeBorder}"
+                                                                            BorderThickness="1"
+                                                                            CornerRadius="8">
+                                                                        <StackPanel>
+                                                                            <TextBlock Text="{Binding Title}"
+                                                                                       FontSize="12"
+                                                                                       FontWeight="SemiBold"
+                                                                                       Foreground="{DynamicResource XScopeAccent}"
+                                                                                       TextWrapping="Wrap" />
+                                                                            <TextBlock Text="{Binding Url}"
+                                                                                       Margin="0,2,0,0"
+                                                                                       FontSize="11"
+                                                                                       Foreground="#188038"
+                                                                                       TextWrapping="Wrap"
+                                                                                       Visibility="{Binding HasUrl, Converter={StaticResource XScopeBoolToVis}}" />
+                                                                            <TextBlock Text="{Binding Snippet}"
+                                                                                       Margin="0,4,0,0"
+                                                                                       FontSize="11"
+                                                                                       Foreground="{DynamicResource XScopeTextSecondary}"
+                                                                                       TextWrapping="Wrap" />
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </Expander>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Tool call -->
+                                            <Border Padding="12,10"
+                                                    Background="{DynamicResource XScopeSurface}"
+                                                    BorderBrush="{DynamicResource XScopeBorder}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="10"
+                                                    Visibility="{Binding IsTool, Converter={StaticResource XScopeBoolToVis}}">
+                                                <DockPanel LastChildFill="True">
+                                                    <materialDesign:PackIcon DockPanel.Dock="Left"
+                                                                             Kind="Console"
+                                                                             Width="16"
+                                                                             Height="16"
+                                                                             Margin="0,1,10,0"
+                                                                             VerticalAlignment="Top"
+                                                                             Foreground="{DynamicResource XScopeTextSecondary}" />
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   FontSize="12"
+                                                                   FontWeight="SemiBold"
+                                                                   FontFamily="Consolas, Cascadia Mono, Microsoft YaHei UI"
+                                                                   Foreground="{DynamicResource XScopeTextPrimary}"
+                                                                   TextWrapping="Wrap" />
+                                                        <TextBlock Text="{Binding Body}"
+                                                                   Margin="0,4,0,0"
+                                                                   FontSize="12"
+                                                                   Foreground="{DynamicResource XScopeTextSecondary}"
+                                                                   TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+
+                                            <!-- Page hit -->
+                                            <Border Padding="12,10"
+                                                    Background="{DynamicResource XScopeSurfaceAlt}"
+                                                    BorderBrush="{DynamicResource XScopeBorder}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="10"
+                                                    Visibility="{Binding IsHit, Converter={StaticResource XScopeBoolToVis}}">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}"
+                                                               FontSize="13"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource XScopeAccent}"
+                                                               TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding Url}"
+                                                               Margin="0,3,0,0"
+                                                               FontSize="11"
+                                                               Foreground="#188038"
+                                                               TextWrapping="Wrap"
+                                                               Visibility="{Binding HasUrl, Converter={StaticResource XScopeBoolToVis}}" />
+                                                    <TextBlock Text="{Binding Body}"
+                                                               Margin="0,6,0,0"
+                                                               FontSize="12"
+                                                               Foreground="{DynamicResource XScopeTextSecondary}"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- System note -->
+                                            <TextBlock FontSize="12"
+                                                       Foreground="{DynamicResource XScopeTextMuted}"
+                                                       TextWrapping="Wrap"
+                                                       Visibility="{Binding IsSystem, Converter={StaticResource XScopeBoolToVis}}">
+                                                <Run FontWeight="SemiBold" Text="{Binding Title}" />
+                                                <Run Text=" · " />
+                                                <Run Text="{Binding Body}" />
+                                            </TextBlock>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- Clarify choices (interactive card under the chat) -->
+                        <Border Margin="0,16,0,0"
+                                Visibility="{Binding Research.ShowClarifyStage, Converter={StaticResource XScopeBoolToVis}}">
                             <StackPanel>
                                 <DockPanel LastChildFill="False" Margin="0,0,0,16">
                                     <Border DockPanel.Dock="Left"
                                             Width="28"
                                             Height="28"
                                             CornerRadius="14"
-                                            Background="#E8F0FE"
+                                            Background="{DynamicResource XScopeAccentSoft}"
                                             VerticalAlignment="Center"
                                             Margin="0,0,10,0">
                                         <materialDesign:PackIcon Kind="CrosshairsGps"
@@ -433,17 +647,17 @@
                                                                  Height="16"
                                                                  HorizontalAlignment="Center"
                                                                  VerticalAlignment="Center"
-                                                                 Foreground="#1A73E8" />
+                                                                 Foreground="{DynamicResource XScopeAccent}" />
                                     </Border>
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="{Binding L.ResearchAskTitle}"
                                                    FontSize="16"
                                                    FontWeight="SemiBold"
-                                                   Foreground="#202124" />
+                                                   Foreground="{DynamicResource XScopeTextPrimary}" />
                                         <TextBlock Text="{Binding Research.ClarifyPrompt}"
                                                    Margin="0,4,0,0"
                                                    FontSize="13"
-                                                   Foreground="#5F6368"
+                                                   Foreground="{DynamicResource XScopeTextSecondary}"
                                                    TextWrapping="Wrap" />
                                     </StackPanel>
                                 </DockPanel>
@@ -472,31 +686,22 @@
                                                 <Button.Template>
                                                     <ControlTemplate TargetType="Button">
                                                         <Border x:Name="Chrome"
-                                                                Background="#FFFFFF"
-                                                                BorderBrush="#E8EAED"
+                                                                Background="{DynamicResource XScopeSurfaceAlt}"
+                                                                BorderBrush="{DynamicResource XScopeBorder}"
                                                                 BorderThickness="1"
                                                                 CornerRadius="14"
                                                                 Padding="14,14"
                                                                 SnapsToDevicePixels="True">
-                                                            <Border.Effect>
-                                                                <DropShadowEffect BlurRadius="12"
-                                                                                  ShadowDepth="1"
-                                                                                  Opacity="0.06"
-                                                                                  Color="#202124" />
-                                                            </Border.Effect>
                                                             <ContentPresenter HorizontalAlignment="Stretch"
                                                                               VerticalAlignment="Center" />
                                                         </Border>
                                                         <ControlTemplate.Triggers>
                                                             <Trigger Property="IsMouseOver" Value="True">
-                                                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1A73E8" />
-                                                                <Setter TargetName="Chrome" Property="Background" Value="#F8FBFF" />
+                                                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource XScopeAccent}" />
+                                                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource XScopeAccentSoft}" />
                                                             </Trigger>
                                                             <Trigger Property="IsPressed" Value="True">
-                                                                <Setter TargetName="Chrome" Property="Background" Value="#E8F0FE" />
-                                                            </Trigger>
-                                                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1A73E8" />
+                                                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource XScopeAccentSoft}" />
                                                             </Trigger>
                                                         </ControlTemplate.Triggers>
                                                     </ControlTemplate>
@@ -511,13 +716,13 @@
                                                             Width="32"
                                                             Height="32"
                                                             CornerRadius="10"
-                                                            Background="#F1F3F4"
+                                                            Background="{DynamicResource XScopeHover}"
                                                             VerticalAlignment="Top"
                                                             Margin="0,0,12,0">
                                                         <TextBlock Text="{Binding Badge}"
                                                                    FontSize="13"
                                                                    FontWeight="SemiBold"
-                                                                   Foreground="#3C4043"
+                                                                   Foreground="{DynamicResource XScopeTextPrimary}"
                                                                    HorizontalAlignment="Center"
                                                                    VerticalAlignment="Center" />
                                                     </Border>
@@ -525,12 +730,12 @@
                                                         <TextBlock Text="{Binding Label}"
                                                                    FontWeight="SemiBold"
                                                                    FontSize="14"
-                                                                   Foreground="#202124"
+                                                                   Foreground="{DynamicResource XScopeTextPrimary}"
                                                                    TextWrapping="Wrap" />
                                                         <TextBlock Text="{Binding Hint}"
                                                                    Margin="0,4,0,0"
                                                                    FontSize="12"
-                                                                   Foreground="#5F6368"
+                                                                   Foreground="{DynamicResource XScopeTextSecondary}"
                                                                    TextWrapping="Wrap" />
                                                     </StackPanel>
                                                     <materialDesign:PackIcon Grid.Column="2"
@@ -539,7 +744,7 @@
                                                                              Height="18"
                                                                              VerticalAlignment="Center"
                                                                              Margin="8,0,0,0"
-                                                                             Foreground="#BDC1C6" />
+                                                                             Foreground="{DynamicResource XScopeBorder}" />
                                                 </Grid>
                                             </Button>
                                         </DataTemplate>
@@ -548,13 +753,13 @@
 
                                 <Border Margin="0,18,0,0"
                                         Padding="14"
-                                        Background="#F8F9FA"
+                                        Background="{DynamicResource XScopeSurface}"
                                         CornerRadius="16">
                                     <StackPanel>
                                         <TextBlock Text="{Binding L.ResearchAskOrType}"
                                                    FontSize="12"
                                                    FontWeight="SemiBold"
-                                                   Foreground="#80868B"
+                                                   Foreground="{DynamicResource XScopeTextMuted}"
                                                    Margin="0,0,0,10" />
                                         <DockPanel LastChildFill="True">
                                             <Button DockPanel.Dock="Right"
@@ -578,52 +783,82 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Stage: requirements locked -->
-                        <Border Padding="20"
-                                Background="#F8FBFF"
-                                BorderBrush="#D2E3FC"
+                        <!-- Explicit confirm before deep research -->
+                        <Border Margin="0,16,0,0"
+                                Padding="20"
+                                Background="{DynamicResource XScopeAccentSoft}"
+                                BorderBrush="{DynamicResource XScopeBorder}"
                                 BorderThickness="1"
                                 CornerRadius="16"
-                                Visibility="{Binding Research.RequirementsLocked, Converter={StaticResource XScopeBoolToVis}}">
-                            <DockPanel LastChildFill="True">
-                                <Border DockPanel.Dock="Left"
-                                        Width="40"
-                                        Height="40"
-                                        CornerRadius="20"
-                                        Background="#E8F0FE"
-                                        VerticalAlignment="Top"
-                                        Margin="0,0,14,0">
-                                    <materialDesign:PackIcon Kind="CheckBold"
-                                                             Width="20"
-                                                             Height="20"
-                                                             HorizontalAlignment="Center"
-                                                             VerticalAlignment="Center"
-                                                             Foreground="#1A73E8" />
+                                Visibility="{Binding Research.ShowConfirmStage, Converter={StaticResource XScopeBoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding L.ResearchConfirmTitle}"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource XScopeAccentText}" />
+                                <TextBlock Text="{Binding L.ResearchConfirmPrompt}"
+                                           Margin="0,8,0,0"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource XScopeTextSecondary}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Research.SummaryText}"
+                                           Margin="0,14,0,0"
+                                           FontSize="17"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource XScopeTextPrimary}"
+                                           TextWrapping="Wrap" />
+                                <DockPanel Margin="0,20,0,0" LastChildFill="False">
+                                    <Button DockPanel.Dock="Left"
+                                            MinWidth="120"
+                                            Height="40"
+                                            Padding="20,0"
+                                            Command="{Binding DataContext.Research.ConfirmNeedCommand, ElementName=ShellRoot}"
+                                            Style="{StaticResource MaterialDesignRaisedButton}"
+                                            Content="{Binding DataContext.L.ResearchConfirm, ElementName=ShellRoot}" />
+                                    <Button DockPanel.Dock="Right"
+                                            Margin="12,0,0,0"
+                                            Padding="12,4"
+                                            Command="{Binding DataContext.Research.CancelCommand, ElementName=ShellRoot}"
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                                            Content="{Binding DataContext.L.ResearchCancel, ElementName=ShellRoot}" />
+                                </DockPanel>
+                                <Border Margin="0,18,0,0"
+                                        Padding="14"
+                                        Background="{DynamicResource XScopeSurfaceAlt}"
+                                        CornerRadius="12">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding L.ResearchConfirmAdjust}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource XScopeTextMuted}"
+                                                   Margin="0,0,0,10" />
+                                        <DockPanel LastChildFill="True">
+                                            <Button DockPanel.Dock="Right"
+                                                    Margin="10,0,0,0"
+                                                    MinWidth="96"
+                                                    Height="40"
+                                                    Padding="18,0"
+                                                    Command="{Binding DataContext.Research.ContinueCommand, ElementName=ShellRoot}"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                    Content="{Binding DataContext.L.ResearchContinue, ElementName=ShellRoot}" />
+                                            <TextBox Text="{Binding DataContext.Research.UserReply, ElementName=ShellRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="False"
+                                                     TextWrapping="Wrap"
+                                                     MinHeight="40"
+                                                     VerticalContentAlignment="Center"
+                                                     materialDesign:HintAssist.Hint="{Binding DataContext.L.ResearchConfirmAdjustHint, ElementName=ShellRoot}"
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" />
+                                        </DockPanel>
+                                    </StackPanel>
                                 </Border>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding L.ResearchLockedTitle}"
-                                               FontSize="15"
-                                               FontWeight="SemiBold"
-                                               Foreground="#174EA6" />
-                                    <TextBlock Text="{Binding Research.SummaryText}"
-                                               Margin="0,8,0,0"
-                                               FontSize="16"
-                                               Foreground="#202124"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding L.ResearchLockedHint}"
-                                               Margin="0,10,0,0"
-                                               FontSize="12"
-                                               Foreground="#5F6368"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                            </DockPanel>
+                            </StackPanel>
                         </Border>
 
-                        <!-- Stage: research report -->
-                        <Border Margin="0,20,0,0"
+                        <!-- Report at end of chat -->
+                        <Border Margin="0,16,0,0"
                                 Padding="20"
-                                Background="#FFFFFF"
-                                BorderBrush="#E8EAED"
+                                Background="{DynamicResource XScopeSurfaceAlt}"
+                                BorderBrush="{DynamicResource XScopeBorder}"
                                 BorderThickness="1"
                                 CornerRadius="16"
                                 Visibility="{Binding Research.HasReport, Converter={StaticResource XScopeBoolToVis}}">
@@ -631,33 +866,99 @@
                                 <TextBlock Text="{Binding L.ResearchReportTitle}"
                                            FontSize="13"
                                            FontWeight="SemiBold"
-                                           Foreground="#5F6368"
+                                           Foreground="{DynamicResource XScopeTextSecondary}"
                                            Margin="0,0,0,12" />
-                                <mdxam:MarkdownScrollViewer Markdown="{Binding Research.ReportMarkdown}"
+                                <!-- Nested FlowDocumentScrollViewer eats wheel; outer PreviewMouseWheel re-routes. -->
+                                <mdxam:MarkdownScrollViewer x:Name="ReportMarkdownViewer"
+                                                            Markdown="{Binding Research.ReportMarkdown}"
                                                             ClickAction="OpenBrowser"
                                                             FontSize="14"
-                                                            Foreground="#202124"
+                                                            Foreground="{DynamicResource XScopeTextPrimary}"
                                                             Background="Transparent"
-                                                            MaxHeight="480"
                                                             Margin="0"
                                                             Padding="0"
-                                                            VerticalScrollBarVisibility="Auto"
+                                                            Focusable="False"
+                                                            IsTabStop="False"
+                                                            VerticalScrollBarVisibility="Disabled"
                                                             HorizontalScrollBarVisibility="Disabled" />
+                                <Button Content="{Binding L.ExportReport}"
+                                        Command="{Binding ExportReportCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,16,0,0"
+                                        Padding="16,4"
+                                        Height="36"
+                                        IsEnabled="{Binding Research.IsRunning, Converter={StaticResource InvertBooleanConverter}}" />
                             </StackPanel>
                         </Border>
+
+                        <!-- Spacer so content can scroll clear of the floating follow-up bar -->
+                        <Border Height="96"
+                                Visibility="{Binding Research.ShowFollowUpCompose, Converter={StaticResource XScopeBoolToVis}}" />
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Inset so floating settings (top) and version (bottom) stay clear of the rail. -->
-                <controls:ResearchProgressPanel Grid.Column="1"
-                                                Margin="0,68,0,48"
-                                                VerticalAlignment="Stretch"
-                                                DataContext="{Binding Research}" />
+                <!-- Follow-up compose: docked to bottom; fade is decoration-only so it does not steal wheel. -->
+                <Grid VerticalAlignment="Bottom"
+                      HorizontalAlignment="Stretch"
+                      Margin="{Binding ResearchFollowUpMargin}"
+                      Panel.ZIndex="30"
+                      Visibility="{Binding Research.ShowFollowUpCompose, Converter={StaticResource XScopeBoolToVis}}">
+                    <Border Margin="0,16,0,0"
+                            Background="{DynamicResource XScopeSurfaceAlt}"
+                            IsHitTestVisible="False"
+                            Focusable="False">
+                        <Border.OpacityMask>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#00000000" Offset="0" />
+                                <GradientStop Color="#B3000000" Offset="0.35" />
+                                <GradientStop Color="#FF000000" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.OpacityMask>
+                    </Border>
+                    <controls:SearchComposePanel Compact="True"
+                                                 PreferPopupAbove="True"
+                                                 Margin="0,16,0,0"
+                                                 HorizontalAlignment="Stretch"
+                                                 MaxWidth="920"
+                                                 MinWidth="480"
+                                                 PreviewMouseWheel="FollowUpCompose_OnPreviewMouseWheel" />
+                </Grid>
+                </Grid>
+
+                <!-- Insights rail: full height to footer; animates width in code-behind -->
+                <controls:ResearchSidePanel Grid.Column="1"
+                                            DataContext="{Binding SidePanel}"
+                                            VerticalAlignment="Stretch"
+                                            Margin="0"
+                                            Visibility="{Binding DataContext.ShowResearchSidePanel, ElementName=ShellRoot, Converter={StaticResource XScopeBoolToVis}}" />
             </Grid>
+
+            <!-- Shared bottom bar — aligns with right panel edge (no floating gap) -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource XScopeSurfaceAlt}"
+                    BorderBrush="{DynamicResource XScopeBorder}"
+                    BorderThickness="0,1,0,0"
+                    Padding="20,10,20,12"
+                    Panel.ZIndex="20">
+                <StackPanel HorizontalAlignment="Right"
+                            Opacity="0.72">
+                    <TextBlock Text="{Binding VersionLabel}"
+                               FontSize="11"
+                               Foreground="{DynamicResource XScopeTextSecondary}"
+                               HorizontalAlignment="Right" />
+                    <TextBlock FontSize="11"
+                               Foreground="{DynamicResource XScopeTextSecondary}"
+                               HorizontalAlignment="Right">
+                        <Run Text="{Binding L.MainDeveloperPrefix, Mode=OneWay}" />
+                        <Run Text="{Binding DeveloperLabel, Mode=OneWay}" FontWeight="SemiBold" />
+                    </TextBlock>
+                </StackPanel>
+            </Border>
 
             <Button HorizontalAlignment="Right"
                     VerticalAlignment="Top"
-                    Margin="0,16,20,0"
+                    Margin="{Binding SettingsButtonMargin}"
                     Width="44"
                     Height="44"
                     Padding="0"
@@ -665,38 +966,20 @@
                     ToolTip="{Binding L.MainSettingsTip}"
                     Cursor="Hand"
                     Style="{StaticResource MaterialDesignIconButton}"
-                    Panel.ZIndex="5">
-                <Button.Background>
-                    <SolidColorBrush Color="#FFFFFF" Opacity="0.92" />
-                </Button.Background>
+                    Panel.ZIndex="15"
+                    Visibility="{Binding ShowSettingsButton, Converter={StaticResource XScopeBoolToVis}}"
+                    Background="{DynamicResource XScopeSurfaceAlt}">
                 <Button.Effect>
                     <DropShadowEffect BlurRadius="10"
                                       ShadowDepth="1"
                                       Opacity="0.18"
-                                      Color="#202124" />
+                                      Color="#000000" />
                 </Button.Effect>
                 <materialDesign:PackIcon Kind="CogOutline"
                                          Width="24"
                                          Height="24"
-                                         Foreground="#5F6368" />
+                                         Foreground="{DynamicResource XScopeTextSecondary}" />
             </Button>
-
-            <StackPanel HorizontalAlignment="Right"
-                        VerticalAlignment="Bottom"
-                        Margin="0,0,20,16"
-                        Opacity="0.72"
-                        Panel.ZIndex="5">
-                <TextBlock Text="{Binding VersionLabel}"
-                           FontSize="11"
-                           Foreground="#5F6368"
-                           HorizontalAlignment="Right" />
-                <TextBlock FontSize="11"
-                           Foreground="#5F6368"
-                           HorizontalAlignment="Right">
-                    <Run Text="{Binding L.MainDeveloperPrefix, Mode=OneWay}" />
-                    <Run Text="{Binding DeveloperLabel, Mode=OneWay}" FontWeight="SemiBold" />
-                </TextBlock>
-            </StackPanel>
         </Grid>
     </Grid>
 </Window>

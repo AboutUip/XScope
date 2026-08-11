@@ -3,7 +3,9 @@
 #include "xscope/ai/types.hpp"
 #include "xscope/mcp/search_tools.hpp"
 #include "xscope/mcp/tool_types.hpp"
+#include "xscope/network/cancel.hpp"
 #include "xscope/prompts/prompt_engine.hpp"
+#include "xscope/providers/twtapi/client.hpp"
 #include "xscope/registry/usable_module.hpp"
 #include "xscope/utils/path.hpp"
 #include "xscope/utils/time.hpp"
@@ -15,6 +17,7 @@
 #include <random>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace xscope::research {
 namespace {
@@ -26,6 +29,129 @@ std::string extract_json_blob(const std::string& text) {
         return {};
     }
     return text.substr(start, end - start + 1);
+}
+
+/// Extract a JSON string field value from a possibly incomplete stream buffer.
+std::string extract_partial_json_string_field(const std::string& text, const std::string& key) {
+    const std::string needle = "\"" + key + "\"";
+    auto key_pos = text.find(needle);
+    if (key_pos == std::string::npos) {
+        return {};
+    }
+    auto colon = text.find(':', key_pos + needle.size());
+    if (colon == std::string::npos) {
+        return {};
+    }
+    auto q = text.find('"', colon + 1);
+    if (q == std::string::npos) {
+        return {};
+    }
+    std::string out;
+    out.reserve(256);
+    for (std::size_t i = q + 1; i < text.size(); ++i) {
+        const char c = text[i];
+        if (c == '\\' && i + 1 < text.size()) {
+            const char n = text[++i];
+            switch (n) {
+            case 'n':
+                out.push_back('\n');
+                break;
+            case 'r':
+                out.push_back('\r');
+                break;
+            case 't':
+                out.push_back('\t');
+                break;
+            case '"':
+            case '\\':
+            case '/':
+                out.push_back(n);
+                break;
+            case 'u':
+                // Skip \uXXXX without decoding — keep stream responsive.
+                if (i + 4 < text.size()) {
+                    i += 4;
+                }
+                break;
+            default:
+                out.push_back(n);
+                break;
+            }
+            continue;
+        }
+        if (c == '"') {
+            break;
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
+std::string stream_display_text(const std::string& assistant) {
+    // Prefer the JSON "thinking" field even when the model echoes prompt text first.
+    const auto brace = assistant.find('{');
+    const std::string& jsonish =
+        brace != std::string::npos ? assistant.substr(brace) : assistant;
+    auto thinking = extract_partial_json_string_field(jsonish, "thinking");
+    if (!thinking.empty()) {
+        return thinking;
+    }
+
+    // Never dump instruction echoes or raw JSON into the thinking bubble.
+    if (brace != std::string::npos) {
+        const auto head = assistant.substr(0, brace);
+        const bool looks_instruction =
+            head.find("JSON") != std::string::npos || head.find("json") != std::string::npos ||
+            head.find("thinking") != std::string::npos || head.find("markdown") != std::string::npos ||
+            head.find("Return") != std::string::npos || head.find("返回") != std::string::npos;
+        const bool looks_payload = jsonish.find("\"thinking\"") != std::string::npos ||
+                                   jsonish.find("\"markdown\"") != std::string::npos ||
+                                   jsonish.find("\"action\"") != std::string::npos;
+        if (looks_instruction || looks_payload) {
+            return {};
+        }
+    }
+
+    // Plain prose (no JSON object yet).
+    if (brace == std::string::npos) {
+        return assistant;
+    }
+    return {};
+}
+
+std::string normalize_search_key(std::string mid, std::string ep, std::string q) {
+    auto lower = [](std::string& s) {
+        for (auto& c : s) {
+            if (c >= 'A' && c <= 'Z') {
+                c = static_cast<char>(c - 'A' + 'a');
+            }
+        }
+    };
+    lower(mid);
+    lower(ep);
+    // Collapse whitespace for duplicate detection.
+    std::string out;
+    out.reserve(q.size());
+    bool was_space = true;
+    for (unsigned char c : q) {
+        if (std::isspace(c)) {
+            if (!was_space) {
+                out.push_back(' ');
+                was_space = true;
+            }
+            continue;
+        }
+        was_space = false;
+        if (c >= 'A' && c <= 'Z') {
+            out.push_back(static_cast<char>(c - 'A' + 'a'));
+        } else {
+            out.push_back(static_cast<char>(c));
+        }
+    }
+    while (!out.empty() && out.back() == ' ') {
+        out.pop_back();
+    }
+    return mid + "|" + ep + "|" + out;
 }
 
 void fill_github_rest_evidence(const std::string& path, const utils::Json& result, bool ok,
@@ -78,6 +204,14 @@ struct ResearchOrchestrator::ActiveRun {
     std::string report_markdown;
     std::string memory_branch_id;
     std::string memory_tip_id;
+    std::string last_live_phase;
+    std::int64_t live_turn_seq = 0;
+    std::int64_t last_live_turn_id = 0;
+    /// Deduplicate identical module/endpoint/query triples (prevents spinning on one search).
+    std::unordered_set<std::string> seen_searches;
+    int stagnant_turns = 0;
+    /// True when this project already has memory and/or knowledge from earlier runs (follow-up).
+    bool has_project_context = false;
 };
 
 ResearchOrchestrator::ResearchOrchestrator(storage::Workspace& workspace) : ws_(workspace) {}
@@ -128,6 +262,7 @@ std::string ResearchOrchestrator::start(const std::string& project_id, const std
     active->run.created_at = utils::now_unix_seconds();
     active->run.updated_at = active->run.created_at;
     active->clarified_query = query;
+    active->has_project_context = project_has_prior_context(project_id);
 
     {
         auto db = ws_.open_project_db(project_id);
@@ -145,11 +280,15 @@ std::string ResearchOrchestrator::start(const std::string& project_id, const std
     }
 
     emit(*active, "start", utils::Json(utils::Json::Object{
-                               {"message", std::string("requirements discovery started")},
+                               {"message", active->has_project_context
+                                               ? std::string("follow-up research started")
+                                               : std::string("requirements discovery started")},
                                {"stage", std::string("requirements")},
+                               {"follow_up", active->has_project_context},
                                {"budget_max_depth_layers", static_cast<std::int64_t>(active->budget.max_depth_layers)},
                                {"budget_max_directions", static_cast<std::int64_t>(active->budget.max_directions)},
                                {"items_per_layer", static_cast<std::int64_t>(active->budget.items_per_layer)},
+                               {"ignore_cost", active->budget.ignore_cost},
                            }));
 
     active->worker = std::thread([this, active]() { worker_main(active); });
@@ -260,6 +399,8 @@ void ResearchOrchestrator::emit(ActiveRun& active, const std::string& phase, con
     {
         std::lock_guard lk(active.mu);
         active.phases.push_back(wire);
+        active.last_live_phase.clear();
+        active.last_live_turn_id = 0;
     }
     active.cv.notify_all();
 
@@ -276,6 +417,36 @@ void ResearchOrchestrator::emit(ActiveRun& active, const std::string& phase, con
     } catch (...) {
         // Persistence failure must not kill the UI stream.
     }
+}
+
+void ResearchOrchestrator::emit_live(ActiveRun& active, const std::string& phase,
+                                     const utils::Json& payload) {
+    active.run.updated_at = utils::now_unix_seconds();
+    std::int64_t turn_id = 0;
+    if (payload.is_object() && payload.contains("turn_id")) {
+        turn_id = payload.at("turn_id").as_int64(0);
+    }
+    auto doc = make_phase_doc(active.run, phase, payload);
+    auto wire = xaiop::Bridge::instance().encode_json(doc.dump(0));
+    {
+        std::lock_guard lk(active.mu);
+        // Coalesce rapid deltas only within the SAME AI turn. Never merge turn N into turn N+1 —
+        // that made completed thinking vanish the moment the next call started.
+        const bool coalesce =
+            (phase == "thinking" || phase == "synthesize") && active.last_live_phase == phase &&
+            turn_id != 0 && active.last_live_turn_id == turn_id && !active.phases.empty();
+        if (coalesce) {
+            active.phases.back() = std::move(wire);
+        } else {
+            while (active.phases.size() > 64) {
+                active.phases.pop_front();
+            }
+            active.phases.push_back(std::move(wire));
+        }
+        active.last_live_phase = phase;
+        active.last_live_turn_id = turn_id;
+    }
+    active.cv.notify_all();
 }
 
 void ResearchOrchestrator::persist(ActiveRun& active) {
@@ -298,13 +469,16 @@ std::string ResearchOrchestrator::build_system_prompt(ActiveRun& active) {
     ctx.usable_modules = ws_.list_usable_search_modules(false);
     ctx.extras["research_policy"] = policy_prompt_text(active.budget);
     ctx.extras["query"] = active.clarified_query.empty() ? active.run.query : active.clarified_query;
-    ctx.extras["evidence_index"] = evidence_index_text(active);
+    // evidence_index is no longer injected into the system template — model pulls memory/knowledge via MCP.
+    ctx.extras["evidence_index"] = "";
     try {
         return ws_.prompts().render("research_system", ctx, true);
     } catch (...) {
         // Fallback if template missing.
         std::ostringstream oss;
-        oss << "You are XScope research orchestrator assistant.\n\n"
+        oss << "You are XScope research orchestrator assistant.\n"
+            << "Role: clarify the need, then research it. "
+               "Do not expect prior reports to be pasted — use MCP memory/knowledge tools.\n\n"
             << ctx.extras["research_policy"] << "\n"
             << "## Search modules\n{{search_modules}}\n";
         auto block = registry::format_usable_modules_for_prompt(ctx.usable_modules);
@@ -319,8 +493,10 @@ std::string ResearchOrchestrator::build_system_prompt(ActiveRun& active) {
 
 std::string ResearchOrchestrator::evidence_index_text(ActiveRun& active) {
     std::ostringstream oss;
-    oss << "Dialogue:\n" << (active.dialogue.empty() ? "(none)\n" : active.dialogue) << "\n";
-    oss << "Discovery hits (" << active.memory.size() << "):\n";
+    oss << "Dialogue / loaded prior context:\n"
+        << (active.dialogue.empty() ? "(none)\n" : active.dialogue) << "\n";
+    oss << "This-run search hits only (" << active.memory.size()
+        << ") — NOT project history (use catalogs / dialogue above for prior work):\n";
     for (const auto& e : active.memory) {
         oss << "- [" << e.id << "] q-round=" << e.round << " module=" << e.module_id << " "
             << e.title << " | " << e.source_uri << "\n  " << e.snippet << "\n";
@@ -334,7 +510,7 @@ std::string ResearchOrchestrator::evidence_index_text(ActiveRun& active) {
         }
     }
     if (active.memory.empty()) {
-        oss << "(none yet)\n";
+        oss << "(none yet this run — empty here does NOT mean the project has no prior data)\n";
     }
     return oss.str();
 }
@@ -357,24 +533,166 @@ utils::Json ResearchOrchestrator::try_parse_json_object(const std::string& text)
 std::string ResearchOrchestrator::ask_ai_json(ActiveRun& active, const std::string& system,
                                               const std::string& user) {
     if (active.run.model_id.empty()) {
+        emit(active, "thinking",
+             utils::Json(utils::Json::Object{
+                 {"text", std::string("未选择模型，无法调用 AI。请在设置中配置供应商与模型。")},
+                 {"stage", active.stage_research ? std::string("research")
+                                                 : std::string("requirements")},
+             }));
         return {};
     }
+    if (active.cancel) {
+        return {};
+    }
+
+    const auto stage = active.stage_research ? std::string("research") : std::string("requirements");
     try {
         auto ai = ws_.ai_runtime();
         ai::ChatRequest req;
         req.model_id = active.run.model_id;
-        req.stream = false;
-        req.temperature = 0.3;
+        req.stream = true;
+        req.stream_id = active.run.id;
+        req.temperature = 1.0; // some models (e.g. DeepSeek reasoner) only allow temperature=1
         req.messages.push_back(ai::ChatMessage{"system", system, "", ""});
         req.messages.push_back(ai::ChatMessage{"user", user, "", ""});
-        auto wire = ai.chat_xaiop(req);
-        auto json_text = xaiop::Bridge::instance().parse_to_json(wire);
-        auto doc = utils::Json::parse(json_text);
-        if (doc.contains("assistant") && doc.at("assistant").is_object()) {
-            return doc.at("assistant").at("content").as_string("");
+
+        network::CancelToken cancel_token;
+        std::string content;
+        std::string reasoning;
+        std::string last_error;
+        std::size_t last_emit_len = 0;
+        auto last_emit_at = std::chrono::steady_clock::now();
+
+        active.live_turn_seq += 1;
+        const std::int64_t turn_id = active.live_turn_seq;
+
+        auto push_stream_ui = [&](const std::string& content_raw, const std::string& reasoning_raw,
+                                  bool force) {
+            const auto from_json = stream_display_text(content_raw);
+            std::string display = !from_json.empty() ? from_json : reasoning_raw;
+            if (display.empty()) {
+                return;
+            }
+            const auto now = std::chrono::steady_clock::now();
+            const auto elapsed =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - last_emit_at).count();
+            if (!force && display.size() < last_emit_len + 12 && elapsed < 40) {
+                return;
+            }
+            last_emit_len = display.size();
+            last_emit_at = now;
+
+            utils::Json::Object payload;
+            payload.emplace("text", display);
+            payload.emplace("stage", stage);
+            payload.emplace("streaming", !force);
+            payload.emplace("turn_id", turn_id);
+            emit_live(active, "thinking", utils::Json(std::move(payload)));
+
+            // Stream report body into the viewer as the markdown field grows.
+            auto md = extract_partial_json_string_field(content_raw, "markdown");
+            if (md.size() >= 24 || (force && !md.empty())) {
+                emit_live(active, "synthesize",
+                          utils::Json(utils::Json::Object{
+                              {"markdown", md},
+                              {"summary", active.clarified_query},
+                              {"stage", stage},
+                              {"streaming", !force},
+                              {"turn_id", turn_id},
+                          }));
+            }
+        };
+
+        auto wire = ai.chat_stream_xaiop(
+            req,
+            [&](const std::string& phase_wire, bool is_final) {
+                if (active.cancel) {
+                    cancel_token.cancel();
+                }
+                try {
+                    auto json_text = xaiop::Bridge::instance().parse_to_json(phase_wire);
+                    auto doc = utils::Json::parse(json_text);
+                    if (doc.contains("error") && !doc.at("error").as_string("").empty()) {
+                        last_error = doc.at("error").as_string("AI error");
+                    }
+                    if (doc.contains("assistant") && doc.at("assistant").is_object()) {
+                        const auto& asst = doc.at("assistant");
+                        content = asst.contains("content") ? asst.at("content").as_string("") : "";
+                        reasoning =
+                            asst.contains("reasoning") ? asst.at("reasoning").as_string("") : "";
+                        push_stream_ui(content, reasoning, is_final);
+                    }
+                } catch (...) {
+                    // Ignore malformed mid-stream frames.
+                }
+            },
+            &cancel_token);
+
+        if (active.cancel) {
+            return {};
         }
+
+        // Prefer content for JSON actions; fall back to final wire / reasoning-only models.
+        if (content.empty() && !wire.empty()) {
+            try {
+                auto json_text = xaiop::Bridge::instance().parse_to_json(wire);
+                auto doc = utils::Json::parse(json_text);
+                if (doc.contains("error") && !doc.at("error").as_string("").empty()) {
+                    last_error = doc.at("error").as_string("AI error");
+                }
+                if (doc.contains("assistant") && doc.at("assistant").is_object()) {
+                    const auto& asst = doc.at("assistant");
+                    content = asst.contains("content") ? asst.at("content").as_string("") : "";
+                    if (reasoning.empty() && asst.contains("reasoning")) {
+                        reasoning = asst.at("reasoning").as_string("");
+                    }
+                }
+            } catch (...) {
+            }
+        }
+
+        // Some reasoners put the JSON answer only in reasoning — last resort for parse.
+        const std::string& for_parse = !content.empty() ? content : reasoning;
+
+        if (!last_error.empty() && for_parse.empty()) {
+            emit(active, "thinking",
+                 utils::Json(utils::Json::Object{
+                     {"text", std::string("AI 返回错误: ") + last_error},
+                     {"stage", stage},
+                 }));
+            return {};
+        }
+        if (for_parse.empty()) {
+            emit(active, "thinking",
+                 utils::Json(utils::Json::Object{
+                     {"text", std::string("AI 返回了空内容（请检查模型/密钥是否可用）。")},
+                     {"stage", stage},
+                 }));
+            return {};
+        }
+
+        const auto display_final = stream_display_text(for_parse);
+        emit(active, "thinking",
+             utils::Json(utils::Json::Object{
+                 {"text", !display_final.empty() ? display_final
+                          : (!reasoning.empty() ? reasoning : for_parse)},
+                 {"stage", stage},
+                 {"streaming", false},
+                 {"turn_id", turn_id},
+             }));
+        return for_parse;
+    } catch (const std::exception& ex) {
+        emit(active, "thinking",
+             utils::Json(utils::Json::Object{
+                 {"text", std::string("AI 调用失败: ") + ex.what()},
+                 {"stage", stage},
+             }));
     } catch (...) {
-        // AI optional; orchestrator continues with heuristics.
+        emit(active, "thinking",
+             utils::Json(utils::Json::Object{
+                 {"text", std::string("AI 调用失败: 未知错误")},
+                 {"stage", stage},
+             }));
     }
     return {};
 }
@@ -383,7 +701,10 @@ void ResearchOrchestrator::normalize_search_target(std::string* module_id, std::
     if (!module_id || !endpoint) {
         return;
     }
-    if (*module_id != "github" && *module_id != "bocha") {
+    if (*module_id == "twitter" || *module_id == "x" || *module_id == "twt") {
+        *module_id = "twtapi";
+    }
+    if (*module_id != "github" && *module_id != "bocha" && *module_id != "twtapi") {
         *module_id = "bocha";
     }
     if (*module_id == "github") {
@@ -392,6 +713,8 @@ void ResearchOrchestrator::normalize_search_target(std::string* module_id, std::
             *endpoint != "labels") {
             *endpoint = "repositories";
         }
+    } else if (*module_id == "twtapi") {
+        *endpoint = providers::twtapi::Client::normalize_endpoint(*endpoint);
     } else if (*endpoint != "web-search" && *endpoint != "ai-search") {
         *endpoint = "web-search";
     }
@@ -416,7 +739,8 @@ bool ResearchOrchestrator::wait_user_reply(ActiveRun& active, std::string* out_r
 
 void ResearchOrchestrator::run_search_round(ActiveRun& active, const std::string& module_id,
                                             const std::string& endpoint, const std::string& q,
-                                            const std::string& purpose) {
+                                            const std::string& purpose,
+                                            const utils::Json* extra_args) {
     std::string mid = module_id;
     std::string ep = endpoint;
     std::string q_clean = humanize_user_reply(q);
@@ -453,14 +777,7 @@ void ResearchOrchestrator::run_search_round(ActiveRun& active, const std::string
     const int round = active.run.search_rounds_done + 1;
     const int count = std::min(std::max(1, active.budget.items_per_layer), 20);
 
-    utils::Json::Object keyword_payload;
-    keyword_payload.emplace("keyword", q_clean);
-    keyword_payload.emplace("module_id", mid);
-    keyword_payload.emplace("endpoint", ep);
-    keyword_payload.emplace("purpose", purpose);
-    keyword_payload.emplace("round", round);
-    emit(active, "keyword", utils::Json(keyword_payload));
-
+    // Single searching phase only — do not also emit keyword (client would double-render).
     utils::Json::Object searching;
     searching.emplace("round", round);
     searching.emplace("module_id", mid);
@@ -484,6 +801,21 @@ void ResearchOrchestrator::run_search_round(ActiveRun& active, const std::string
     if (mid == "bocha" && ep == "ai-search") {
         args.emplace("answer", false);
         args.emplace("stream", false);
+    }
+    if (mid == "twtapi") {
+        if (ep == "Search") {
+            args.emplace("type", std::string("Latest"));
+        }
+        if (extra_args && extra_args->is_object()) {
+            for (const char* key :
+                 {"type", "username", "screen_name", "user_id", "tweet_id", "tweet_ids", "list_id",
+                  "community_id", "cursor", "woeid", "language", "stringify_ids", "safe_search",
+                  "time_filter"}) {
+                if (extra_args->contains(key) && !args.contains(key)) {
+                    args.emplace(key, (*extra_args).at(key));
+                }
+            }
+        }
     }
     treq.arguments = utils::Json(std::move(args));
 
@@ -571,6 +903,63 @@ void ResearchOrchestrator::run_search_round(ActiveRun& active, const std::string
                         hits.emplace_back(std::move(h));
                     }
                 }
+                // TwtAPI normalized tweets (Search / timelines / detail helpers).
+                if (mid == "twtapi" && body.contains("_normalized") &&
+                    body.at("_normalized").is_object()) {
+                    const auto& norm = body.at("_normalized");
+                    if (norm.contains("tweets") && norm.at("tweets").is_array()) {
+                        for (const auto& t : norm.at("tweets").as_array()) {
+                            if (!t.is_object()) {
+                                continue;
+                            }
+                            if (static_cast<int>(hits.size()) >= count) {
+                                break;
+                            }
+                            std::string rest_id =
+                                t.contains("rest_id") ? t.at("rest_id").as_string("") : "";
+                            std::string text;
+                            if (t.contains("result") && t.at("result").is_object()) {
+                                const auto& result = t.at("result");
+                                if (result.contains("legacy") && result.at("legacy").is_object()) {
+                                    const auto& legacy = result.at("legacy");
+                                    text = legacy.contains("full_text")
+                                               ? legacy.at("full_text").as_string("")
+                                               : legacy.contains("text") ? legacy.at("text").as_string("")
+                                                                         : "";
+                                }
+                            }
+                            if (text.empty() && t.contains("text")) {
+                                text = t.at("text").as_string("");
+                            }
+                            if (rest_id.empty() && text.empty()) {
+                                continue;
+                            }
+                            EvidenceItem e;
+                            e.id = make_id("ev_");
+                            e.run_id = active.run.id;
+                            e.kind = "tweet";
+                            e.module_id = mid;
+                            e.title = text.empty() ? ("tweet " + rest_id)
+                                                   : (text.size() > 80 ? text.substr(0, 80) + "…" : text);
+                            e.source_uri =
+                                rest_id.empty() ? "" : ("https://x.com/i/status/" + rest_id);
+                            e.snippet = text;
+                            e.body_json = t.dump(0);
+                            e.round = round;
+                            e.created_at = utils::now_unix_seconds();
+                            active.memory.push_back(e);
+                            utils::Json::Object h;
+                            h.emplace("evidence_id", e.id);
+                            h.emplace("title", e.title);
+                            h.emplace("url", e.source_uri);
+                            h.emplace("snippet", e.snippet);
+                            h.emplace("keyword", q_clean);
+                            h.emplace("round", round);
+                            h.emplace("module_id", mid);
+                            hits.emplace_back(std::move(h));
+                        }
+                    }
+                }
             }
         } catch (...) {
         }
@@ -645,130 +1034,93 @@ void ResearchOrchestrator::lock_requirements(ActiveRun& active, const std::strin
     run_deep_research(active);
 }
 
-bool ResearchOrchestrator::is_vague_ask_prompt(const std::string& prompt) {
-    auto lower = prompt;
+bool ResearchOrchestrator::looks_like_github_need(const std::string& text) {
+    if (text.empty()) {
+        return false;
+    }
+    auto lower = text;
     for (auto& c : lower) {
         if (c >= 'A' && c <= 'Z') {
             c = static_cast<char>(c - 'A' + 'a');
         }
     }
-    const char* needles[] = {
-        "一句话", "描述需求", "描述你的", "真正想调研", "进一步说明", "你的调研目标",
-        "describe your", "what do you want", "clarify your need", "tell me what",
-        "please clarify", "调研目标是什么",
-    };
-    for (const char* n : needles) {
-        if (lower.find(n) != std::string::npos) {
-            return true;
-        }
-    }
-    return prompt.size() < 8;
+    return lower.find("github") != std::string::npos || text.find("仓库") != std::string::npos ||
+           lower.find("repo") != std::string::npos || lower.find("readme") != std::string::npos ||
+           text.find("开源项目") != std::string::npos;
 }
 
-utils::Json::Array ResearchOrchestrator::choices_from_memory(ActiveRun& active) {
-    // Prefer AI-authored direction labels (never dump raw webpage titles as the choice text).
-    {
-        auto system = build_system_prompt(active);
-        std::ostringstream user;
-        user << "User original query:\n" << active.run.query << "\n\n"
-             << evidence_index_text(active) << "\n"
-             << "Produce JSON ONLY:\n"
-             << R"JS({"prompt":"一句话说明请用户选方向","options":[{"id":"a","label":"短人类描述的调研方向","hint":"补充说明，可提及仓库/作者但不要整段粘贴网页标题"}]})JS"
-             << "\nRules: 2-4 options. label/hint must be model-written research directions in the user language. "
-             << "FORBIDDEN: copying raw webpage titles, SEO titles, or「威客」noise as label.\n"
-             << "If the query is about a GitHub repo/author, options should be about locating that repo, README/protocol, related projects, etc.\n";
-        auto raw = ask_ai_json(active, system, user.str());
-        auto parsed = try_parse_json_object(raw);
-        if (parsed.is_object() && parsed.contains("options") && parsed.at("options").is_array()) {
-            utils::Json::Array opts;
-            for (const auto& o : parsed.at("options").as_array()) {
-                if (!o.is_object()) {
-                    continue;
-                }
-                auto label = o.contains("label") ? o.at("label").as_string("") : "";
-                if (label.empty() || is_vague_ask_prompt(label)) {
-                    continue;
-                }
-                // Reject options that look like raw SEO titles.
-                if (label.find("威客") != std::string::npos || label.find(" - ") != std::string::npos ||
-                    label.find("_") != std::string::npos || label.size() > 60) {
-                    continue;
-                }
-                opts.push_back(o);
-                if (opts.size() >= 4) {
-                    break;
-                }
-            }
-            if (opts.size() >= 2) {
-                return opts;
-            }
+bool ResearchOrchestrator::looks_like_twitter_need(const std::string& text) {
+    if (text.empty()) {
+        return false;
+    }
+    auto lower = text;
+    for (auto& ch : lower) {
+        if (ch >= 'A' && ch <= 'Z') {
+            ch = static_cast<char>(ch - 'A' + 'a');
         }
     }
-
+    const bool zh =
+        text.find("\xE6\x8E\xA8\xE7\x89\xB9") != std::string::npos || // 推特
+        text.find("\xE6\x8E\xA8\xE6\x96\x87") != std::string::npos || // 推文
+        text.find("\xE8\xAF\x9D\xE9\xA2\x98") != std::string::npos;   // 话题
+    return lower.find("twitter") != std::string::npos || lower.find("tweet") != std::string::npos ||
+           lower.find("twtapi") != std::string::npos || lower.find("x.com") != std::string::npos ||
+           lower.find("hashtag") != std::string::npos || zh;
+}
+utils::Json::Array ResearchOrchestrator::sanitize_choice_options(const utils::Json::Array& options) {
     utils::Json::Array opts;
-    const auto& q = active.run.query;
-    const bool githubish =
-        q.find("github") != std::string::npos || q.find("GitHub") != std::string::npos ||
-        q.find("仓库") != std::string::npos || q.find("AboutUip") != std::string::npos ||
-        q.find("XAIOP") != std::string::npos || q.find("xaiop") != std::string::npos;
-
-    if (githubish) {
-        utils::Json::Object a;
-        a.emplace("id", std::string("gh_repo"));
-        a.emplace("label", std::string("定位作者仓库与主页"));
-        a.emplace("hint", std::string("在 GitHub 找到 AboutUip / XAIOP 仓库、星标与基础信息"));
-        opts.emplace_back(std::move(a));
-        utils::Json::Object b;
-        b.emplace("id", std::string("gh_protocol"));
-        b.emplace("label", std::string("弄清 XAIOP 是什么"));
-        b.emplace("hint", std::string("协议用途、版本、SDK 入口与文档要点"));
-        opts.emplace_back(std::move(b));
-        utils::Json::Object c;
-        c.emplace("id", std::string("gh_related"));
-        c.emplace("label", std::string("辨别同名/相近项目"));
-        c.emplace("hint", std::string("排除 AIOps 等相近名称，确认是否为目标项目"));
-        opts.emplace_back(std::move(c));
-        utils::Json::Object d;
-        d.emplace("id", std::string("gh_usage"));
-        d.emplace("label", std::string("怎么接入/使用"));
-        d.emplace("hint", std::string("客户端或 SDK 集成方式与示例"));
-        opts.emplace_back(std::move(d));
-        return opts;
+    int idx = 0;
+    for (const auto& o : options) {
+        if (!o.is_object()) {
+            continue;
+        }
+        auto label = o.contains("label") ? o.at("label").as_string("") : "";
+        auto hint = o.contains("hint") ? o.at("hint").as_string("") : "";
+        auto id = o.contains("id") ? o.at("id").as_string("") : "";
+        while (!label.empty() && (label.front() == ' ' || label.front() == '\t' || label.front() == '\n')) {
+            label.erase(label.begin());
+        }
+        while (!label.empty() && (label.back() == ' ' || label.back() == '\t' || label.back() == '\n')) {
+            label.pop_back();
+        }
+        if (label.empty()) {
+            continue;
+        }
+        // Drop obvious SEO spam only — never rewrite meaning.
+        if (label.find("威客") != std::string::npos || hint.find("威客") != std::string::npos) {
+            continue;
+        }
+        if (label.size() > 120) {
+            label = truncate_utf8(label, 120);
+        }
+        if (hint.size() > 200) {
+            hint = truncate_utf8(hint, 200);
+        }
+        if (id.empty()) {
+            id = std::string("opt_") + static_cast<char>('a' + (idx % 26));
+        }
+        utils::Json::Object clean;
+        clean.emplace("id", std::move(id));
+        clean.emplace("label", std::move(label));
+        if (!hint.empty()) {
+            clean.emplace("hint", std::move(hint));
+        }
+        opts.emplace_back(std::move(clean));
+        ++idx;
+        if (opts.size() >= 8) {
+            break;
+        }
     }
-
-    utils::Json::Object a;
-    a.emplace("id", std::string("scope_howto"));
-    a.emplace("label", std::string("偏「怎么做 / 操作策略」"));
-    a.emplace("hint", std::string("实操步骤、话术、流程"));
-    opts.emplace_back(std::move(a));
-    utils::Json::Object b;
-    b.emplace("id", std::string("scope_why"));
-    b.emplace("label", std::string("偏「原理 / 机制解释」"));
-    b.emplace("hint", std::string("为什么这样、底层逻辑"));
-    opts.emplace_back(std::move(b));
-    utils::Json::Object c;
-    c.emplace("id", std::string("scope_compare"));
-    c.emplace("label", std::string("偏「对比 / 选型」"));
-    c.emplace("hint", std::string("方案对比、优劣、适用场景"));
-    opts.emplace_back(std::move(c));
-    utils::Json::Object d;
-    d.emplace("id", std::string("scope_latest"));
-    d.emplace("label", std::string("偏「最新动态 / 变化」"));
-    d.emplace("hint", std::string("近期变化、限制、社区讨论"));
-    opts.emplace_back(std::move(d));
     return opts;
 }
 
 bool ResearchOrchestrator::present_discovery_choices(ActiveRun& active, std::string prompt,
                                                      utils::Json::Array options,
                                                      const std::string& thinking) {
-    // Prefer caller-provided options; otherwise synthesize direction labels.
-    utils::Json::Array opts = std::move(options);
-    if (opts.empty()) {
-        opts = choices_from_memory(active);
-    }
-    if (prompt.empty() || is_vague_ask_prompt(prompt)) {
-        prompt = std::string("请选择最接近你意图的调研切入点：");
+    // Trust the model: ask_user means we must ask. Do not invent/replace options.
+    utils::Json::Array opts = sanitize_choice_options(options);
+    if (prompt.empty()) {
+        prompt = std::string("请选择：");
     }
 
     active.discovery_asks += 1;
@@ -808,15 +1160,93 @@ bool ResearchOrchestrator::present_discovery_choices(ActiveRun& active, std::str
     return true;
 }
 
+bool ResearchOrchestrator::present_need_confirmation(ActiveRun& active, const std::string& need,
+                                                     const std::string& summary,
+                                                     const std::string& thinking) {
+    auto clean = humanize_user_reply(summary.empty() ? need : summary);
+    if (clean.empty()) {
+        clean = humanize_user_reply(need.empty() ? active.clarified_query : need);
+    }
+    if (clean.empty()) {
+        clean = humanize_user_reply(active.run.query);
+    }
+
+    active.run.status = RunStatus::WaitingUser;
+    active.run.waiting_prompt = clean;
+    active.clarified_query = clean;
+    active.run.summary = clean;
+
+    utils::Json::Object payload;
+    payload.emplace("clarified_need", clean);
+    payload.emplace("summary", clean);
+    payload.emplace("prompt", std::string("请确认以下调研需求是否正确："));
+    payload.emplace("stage", std::string("requirements"));
+    if (!thinking.empty()) {
+        payload.emplace("thinking", thinking);
+    }
+    emit(active, "confirm_need", utils::Json(std::move(payload)));
+    try {
+        persist(active);
+    } catch (...) {
+    }
+
+    std::string reply;
+    if (!wait_user_reply(active, &reply)) {
+        active.run.status = RunStatus::Cancelled;
+        emit(active, "cancelled", utils::Json(nullptr));
+        try {
+            persist(active);
+        } catch (...) {
+        }
+        return false;
+    }
+
+    auto trimmed = reply;
+    while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t')) {
+        trimmed.erase(trimmed.begin());
+    }
+    while (!trimmed.empty() && (trimmed.back() == ' ' || trimmed.back() == '\t')) {
+        trimmed.pop_back();
+    }
+
+    // Explicit confirm token from client, or common affirmatives.
+    auto lower = trimmed;
+    for (auto& c : lower) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    const bool confirmed =
+        lower == "__confirm__" || lower == "confirm" || lower == "ok" || lower == "yes" ||
+        trimmed == "确定" || trimmed == "确认" || trimmed == "是" || trimmed == "好" ||
+        trimmed == "可以" || trimmed == "没问题";
+
+    active.dialogue += "assistant_confirm_need: " + clean + "\nuser: " + reply + "\n";
+    if (!confirmed) {
+        // User wants to adjust — keep discovery open with their feedback.
+        if (!trimmed.empty() && trimmed != "__reject__") {
+            active.run.summary = humanize_user_reply(trimmed);
+            active.clarified_query = active.run.query + " | focus: " + active.run.summary;
+        }
+        emit(active, "thinking",
+             utils::Json(utils::Json::Object{
+                 {"text", std::string("用户未确认，继续根据反馈细化需求（不臆测）。")},
+                 {"stage", std::string("requirements")},
+             }));
+        return false;
+    }
+    return true;
+}
+
 std::string ResearchOrchestrator::humanize_user_reply(const std::string& reply) {
     // "query | focus: 弄清 XAIOP…" / "query | user: gh_protocol: …" → focus label
     // "gh_protocol: 弄清 XAIOP 是什么 — 协议用途…" → "弄清 XAIOP 是什么"
     auto s = reply;
     auto trim = [](std::string& v) {
-        while (!v.empty() && (v.front() == ' ' || v.front() == '\t')) {
+        while (!v.empty() && (v.front() == ' ' || v.front() == '\t' || v.front() == '\n')) {
             v.erase(v.begin());
         }
-        while (!v.empty() && (v.back() == ' ' || v.back() == '\t')) {
+        while (!v.empty() && (v.back() == ' ' || v.back() == '\t' || v.back() == '\n')) {
             v.pop_back();
         }
     };
@@ -827,6 +1257,29 @@ std::string ResearchOrchestrator::humanize_user_reply(const std::string& reply) 
     if (pipe != std::string::npos && pipe + 3 < s.size()) {
         s = s.substr(pipe + 3);
         trim(s);
+    }
+
+    // Strip engine/UI lock prefixes that must never become search keywords.
+    const char* prefixes[] = {
+        "已根据对话与检索锁定需求：", "已根据对话与检索锁定需求:",
+        "需求确定阶段异常收尾：", "需求确定阶段异常收尾:",
+        "需求已锁定：", "需求已锁定:", "已锁定：", "已锁定:", "Locked: ", "Locked:",
+        "focus:", "Focus:", "user:", "User:",
+    };
+    for (int pass = 0; pass < 4; ++pass) {
+        bool hit = false;
+        for (const char* p : prefixes) {
+            const auto n = std::char_traits<char>::length(p);
+            if (n > 0 && s.size() >= n && s.compare(0, n, p) == 0) {
+                s = s.substr(n);
+                trim(s);
+                hit = true;
+                break;
+            }
+        }
+        if (!hit) {
+            break;
+        }
     }
 
     // Strip leading role / id markers: "focus:", "user:", "gh_protocol:"
@@ -850,92 +1303,101 @@ std::string ResearchOrchestrator::humanize_user_reply(const std::string& reply) 
         s = s.substr(0, em);
         trim(s);
     }
+
+    // Collapse accidental exact doubling: "abcabc" → "abc"
+    if (s.size() >= 8 && (s.size() % 2) == 0) {
+        const auto half = s.size() / 2;
+        if (s.compare(0, half, s, half, half) == 0) {
+            s.resize(half);
+            trim(s);
+        }
+    }
+
     return s.empty() ? reply : s;
 }
 
-void ResearchOrchestrator::finalize_after_user_choice(ActiveRun& active) {
-    emit(active, "thinking",
-         utils::Json(utils::Json::Object{
-             {"text", std::string("已收到你的选择，正在按该切入点锁定需求（不再重复提问）。")},
-             {"stage", std::string("requirements")},
-         }));
-
-    const auto& q = active.clarified_query;
-    const bool githubish =
-        q.find("github") != std::string::npos || q.find("GitHub") != std::string::npos ||
-        q.find("仓库") != std::string::npos || q.find("AboutUip") != std::string::npos ||
-        q.find("XAIOP") != std::string::npos || q.find("xaiop") != std::string::npos ||
-        active.run.query.find("github") != std::string::npos ||
-        active.run.query.find("GitHub") != std::string::npos ||
-        active.run.query.find("XAIOP") != std::string::npos ||
-        active.run.query.find("xaiop") != std::string::npos;
-
-    try {
-        if (githubish) {
-            active.prefer_github = true;
-            const auto need =
-                humanize_user_reply(active.clarified_query.empty() ? active.run.query
-                                                                   : active.clarified_query);
-            run_search_round(active, "github", "repositories",
-                             need.empty() ? active.run.query : need, "requirements");
-        } else if (active.discovery_searches == 0) {
-            run_search_round(active, "bocha", "web-search",
-                             humanize_user_reply(active.clarified_query.empty()
-                                                     ? active.run.query
-                                                     : active.clarified_query),
-                             "requirements");
-        }
-    } catch (...) {
-    }
-
-    const auto focus = active.run.summary.empty() ? humanize_user_reply(active.clarified_query)
-                                                  : active.run.summary;
-    lock_requirements(active, focus, focus);
-}
-
 void ResearchOrchestrator::worker_main(std::shared_ptr<ActiveRun> active) {
-    constexpr int kMaxAiTurns = 10;
-    constexpr int kMaxDiscoverySearches = 6;
-    constexpr int kMaxAsks = 3;
+    // Ask count is intentionally unlimited — the model decides when uncertainty requires ask_user.
+    // Turn budget is only a runaway safety valve (not an ask quota).
+    constexpr int kMaxAiTurns = 40;
+    constexpr int kMaxDiscoverySearches = 8;
 
     try {
         active->dialogue = std::string("user: ") + active->run.query + "\n";
 
+        // Follow-up on a project that already has memory/KG: skip requirements discovery.
+        // Prior findings live in catalogs (+ hydrate); the new query IS the locked need.
+        if (active->has_project_context) {
+            emit(*active, "thinking",
+                 utils::Json(utils::Json::Object{
+                     {"text",
+                      std::string("检测到本项目已有先前调研记忆，按追问直接进入研究（跳过需求澄清）。")},
+                     {"stage", std::string("requirements")},
+                 }));
+            lock_requirements(*active, active->clarified_query,
+                              active->run.summary.empty() ? active->run.query : active->run.summary);
+            return;
+        }
+
         while (!active->cancel) {
-            if (active->discovery_ai_turns >= kMaxAiTurns || active->discovery_asks >= kMaxAsks) {
+            if (active->discovery_ai_turns >= kMaxAiTurns) {
                 emit(*active, "thinking",
                      utils::Json(utils::Json::Object{
-                         {"text", std::string("Discovery limit reached; locking the best-effort need.")},
+                         {"text", std::string("Discovery turn budget reached; locking the best-effort need.")},
                          {"stage", std::string("requirements")},
                      }));
                 lock_requirements(*active, active->clarified_query,
-                                  active->run.summary.empty()
-                                      ? (std::string("已根据对话与检索锁定需求：") + active->clarified_query)
-                                      : active->run.summary);
+                                  active->run.summary.empty() ? active->clarified_query
+                                                              : active->run.summary);
                 return;
             }
 
             active->discovery_ai_turns += 1;
             auto system = build_system_prompt(*active);
+            const auto catalogs = fetch_mandatory_catalogs(*active);
             std::ostringstream user;
-            user << "Stage: REQUIREMENTS DISCOVERY only (not final research).\n"
-                 << "Original user input (already given — NEVER ask them to restate it):\n"
+            user << "Stage: REQUIREMENTS DISCOVERY (clarify the research need; not the final report).\n"
+                 << "User input (already given — NEVER ask them to restate it):\n"
                  << active->run.query << "\n"
                  << "Working clarified_query: " << active->clarified_query << "\n"
                  << "discovery_searches=" << active->discovery_searches << "/" << kMaxDiscoverySearches
-                 << " discovery_asks=" << active->discovery_asks << "/" << kMaxAsks << "\n"
+                 << " discovery_asks_so_far=" << active->discovery_asks
+                 << " (NO ask limit — you decide)\n";
+            if (active->has_project_context) {
+                user << "\n## Situation: FOLLOW-UP on the same project\n"
+                     << "This project already has stage memory and/or a knowledge graph from prior "
+                        "research. Catalogs below are directories only (JSON may be partial — that is fine).\n"
+                     << "Your job: answer THIS user input. Prefer reading prior memory/knowledge "
+                        "before launching new web/GitHub searches. Do not pretend amnesia.\n";
+            } else {
+                user << "\n## Situation: fresh project\n"
+                     << "No prior project memory/knowledge yet (or catalogs empty). Search to reduce "
+                        "uncertainty, then confirm the need.\n";
+            }
+            user << "\n" << catalogs << "\n"
+                 << "Current-run hits index (this session only):\n"
                  << evidence_index_text(*active) << "\n"
-                 << "Reply JSON ONLY with one of:\n"
-                 << "1) Search to understand the fuzzy need (preferred early):\n"
-                 << R"JS({"thinking":"...full reasoning...","action":"search","searches":[{"module_id":"bocha"|"github","endpoint":"web-search"|"repositories","q":"keyword"}]})JS"
-                 << "\n2) Ask user ONLY with concrete multiple-choice / directions (REQUIRED options, >=2).\n"
-                 << "   FORBIDDEN: asking the user to 'describe their need in one sentence' or restate the query.\n"
-                 << "   The user already typed a fuzzy need; you must narrow it with options based on search hits.\n"
-                 << R"JS({"thinking":"...","action":"ask_user","type":"choice","prompt":"基于检索，你更想深入哪条线？","options":[{"id":"a","label":"具体方向A","hint":"..."},{"id":"b","label":"具体方向B","hint":"..."}]})JS"
-                 << "\n3) Confirm when the need is specific enough:\n"
+                 << "Available actions (engine executes these; pick what you need):\n"
+                 << "1) memory_get / memory_chain / knowledge_get — load prior bodies by catalog id\n"
+                 << R"JS({"thinking":"...","action":"memory_get","id":"mem_..."})JS" << "\n"
+                 << R"JS({"thinking":"...","action":"memory_chain","id":"mem_..."})JS" << "\n"
+                 << R"JS({"thinking":"...","action":"knowledge_get","id":"kn_..."})JS" << "\n"
+                 << "2) search — gather new facts when catalogs are insufficient\n"
+                 << "   Web: module_id=bocha endpoint=web-search\n"
+                 << "   GitHub: module_id=github endpoint=repositories|code|…\n"
+                 << "   Twitter/X: module_id=twtapi endpoint=Search|UserByScreenName|UserTweets|TweetDetail|Trends "
+                    "(ONLY if twtapi secret_configured=true in Search modules block)\n"
+                 << R"JS({"thinking":"...","action":"search","searches":[{"module_id":"bocha","endpoint":"web-search","q":"..."}]})JS"
+                 << "\n"
+                 << R"JS({"thinking":"...","action":"search","searches":[{"module_id":"twtapi","endpoint":"Search","q":"#AI OR from:openai","type":"Latest","count":20}]})JS"
+                 << "\n"
+                 << R"JS({"thinking":"...","action":"search","searches":[{"module_id":"twtapi","endpoint":"UserByScreenName","username":"openai"}]})JS"
+                 << "\n3) ask_user — ONLY for necessary unknowns you must NOT guess (presented verbatim)\n"
+                 << R"JS({"thinking":"...","action":"ask_user","type":"choice","prompt":"...","options":[{"id":"a","label":"...","hint":"..."},{"id":"b","label":"...","hint":"..."}]})JS"
+                 << "\n4) confirm — propose a clear research need for the USER to approve\n"
                  << R"JS({"thinking":"...","action":"confirm","clarified_need":"...","summary":"..."})JS"
-                 << "\nRules: search before ask when evidence is empty; after user picks an option prefer confirm or a NEW search,"
-                 << " not another vague question. thinking must be complete (no truncation). Match user language.\n";
+                 << "\nRules: You decide when catalogs are enough vs when to search. Incomplete catalog "
+                    "JSON is OK — open ids you care about. thinking must be complete. Match user language.\n";
 
             auto raw = ask_ai_json(*active, system, user.str());
             auto parsed = try_parse_json_object(raw);
@@ -946,38 +1408,46 @@ void ResearchOrchestrator::worker_main(std::shared_ptr<ActiveRun> active) {
                 thinking = parsed.contains("thinking") ? parsed.at("thinking").as_string("") : "";
                 action = parsed.contains("action") ? parsed.at("action").as_string("") : "";
             }
-            if (thinking.empty() && !raw.empty()) {
-                thinking = raw; // full text — UI may collapse, never truncate here
-            }
-            if (thinking.empty()) {
-                thinking = "Analyzing user need and deciding next discovery step…";
-            }
-            emit(*active, "thinking",
-                 utils::Json(utils::Json::Object{
-                     {"text", thinking},
-                     {"stage", std::string("requirements")},
-                     {"action", action},
-                 }));
+            // Thinking already streamed via ask_ai_json — do not re-emit (that wiped the bubble).
 
             if (!parsed.is_object() || action.empty()) {
-                if (active->discovery_searches < 1) {
-                    run_search_round(*active, "bocha", "web-search", active->clarified_query,
+                // Do not invent a quiz for the user — retry via search or another model turn.
+                active->stagnant_turns += 1;
+                if (active->discovery_searches < 1 && !active->has_project_context) {
+                    run_search_round(*active, "bocha", "web-search",
+                                     active->run.query.empty() ? active->clarified_query
+                                                               : active->run.query,
                                      "requirements");
                     active->searches_since_ask += 1;
+                    active->stagnant_turns = 0;
                     continue;
                 }
-                if (active->discovery_asks >= kMaxAsks) {
+                if (active->stagnant_turns >= 3) {
+                    emit(*active, "plan",
+                         utils::Json(utils::Json::Object{
+                             {"note", std::string("模型连续未给出有效动作，按当前理解确认需求。")},
+                             {"stage", std::string("requirements")},
+                         }));
                     lock_requirements(*active, active->clarified_query,
-                                      std::string("已锁定：") + active->clarified_query);
+                                      active->run.summary.empty() ? active->clarified_query
+                                                                  : active->run.summary);
                     return;
                 }
-                if (!present_discovery_choices(*active,
-                                               "请选择最接近你意图的调研切入点：",
-                                               choices_from_memory(*active), thinking)) {
-                    return;
+                continue;
+            }
+            active->stagnant_turns = 0;
+
+            if (handle_memory_read_action(*active, parsed, action)) {
+                continue;
+            }
+
+            if (action == "memory_add" || action == "knowledge") {
+                if (action == "knowledge") {
+                    apply_knowledge_ops(*active, parsed);
+                } else {
+                    apply_memory_ops(*active, parsed);
                 }
-                finalize_after_user_choice(*active);
-                return;
+                continue;
             }
 
             if (action == "confirm") {
@@ -986,14 +1456,23 @@ void ResearchOrchestrator::worker_main(std::shared_ptr<ActiveRun> active) {
                                 : active->clarified_query;
                 auto summary =
                     parsed.contains("summary") ? parsed.at("summary").as_string(need) : need;
-                if (active->discovery_searches == 0) {
-                    emit(*active, "thinking",
+                // Fresh projects: prefer at least one discovery search. Follow-ups may confirm
+                // from prior memory/knowledge without a new search.
+                if (active->discovery_searches == 0 && !active->has_project_context) {
+                    emit(*active, "plan",
                          utils::Json(utils::Json::Object{
-                             {"text", std::string("Need at least one discovery search before confirm.")},
+                             {"note", std::string("新项目建议先检索再确认；正在补一次发现检索。")},
                              {"stage", std::string("requirements")},
                          }));
                     run_search_round(*active, "bocha", "web-search", need, "requirements");
                     active->searches_since_ask += 1;
+                    continue;
+                }
+                // Propose need to the user — never auto-lock. User must click Confirm.
+                if (!present_need_confirmation(*active, need, summary, thinking)) {
+                    if (active->cancel) {
+                        return;
+                    }
                     continue;
                 }
                 lock_requirements(*active, need, summary);
@@ -1002,117 +1481,86 @@ void ResearchOrchestrator::worker_main(std::shared_ptr<ActiveRun> active) {
 
             if (action == "search") {
                 if (active->discovery_searches >= kMaxDiscoverySearches) {
-                    action = "ask_user";
-                } else {
-                    utils::Json::Array searches;
-                    if (parsed.contains("searches") && parsed.at("searches").is_array()) {
-                        searches = parsed.at("searches").as_array();
-                    }
-                    if (searches.empty()) {
-                        utils::Json::Object one;
-                        one.emplace("module_id", std::string("bocha"));
-                        one.emplace("endpoint", std::string("web-search"));
-                        one.emplace("q", active->clarified_query);
-                        searches.emplace_back(std::move(one));
-                    }
-                    int ran = 0;
-                    for (const auto& s : searches) {
-                        if (active->cancel || active->discovery_searches >= kMaxDiscoverySearches) {
-                            break;
-                        }
-                        if (!s.is_object()) {
-                            continue;
-                        }
-                        std::string mid = s.contains("module_id") ? s.at("module_id").as_string("bocha")
-                                                                  : "bocha";
-                        std::string ep = s.contains("endpoint") ? s.at("endpoint").as_string("web-search")
-                                                                : "web-search";
-                        std::string q = s.contains("q") ? s.at("q").as_string(active->clarified_query)
-                                                        : active->clarified_query;
-                        if (q.empty()) {
-                            q = active->clarified_query;
-                        }
-                        normalize_search_target(&mid, &ep);
-                        utils::Json::Object plan;
-                        plan.emplace("module_id", mid);
-                        plan.emplace("endpoint", ep);
-                        plan.emplace("q", q);
-                        plan.emplace("keyword", q);
-                        plan.emplace("purpose", std::string("requirements"));
-                        emit(*active, "plan", utils::Json(std::move(plan)));
-                        run_search_round(*active, mid, ep, q, "requirements");
-                        active->searches_since_ask += 1;
-                        ran += 1;
-                        if (ran >= 2) {
-                            break;
-                        }
-                    }
+                    emit(*active, "plan",
+                         utils::Json(utils::Json::Object{
+                             {"note",
+                              std::string("探索检索次数已用尽 — 请 ask_user 澄清必要未知，或 confirm（勿臆测）。")},
+                             {"stage", std::string("requirements")},
+                         }));
                     continue;
                 }
+                utils::Json::Array searches;
+                if (parsed.contains("searches") && parsed.at("searches").is_array()) {
+                    searches = parsed.at("searches").as_array();
+                }
+                if (searches.empty()) {
+                    utils::Json::Object one;
+                    one.emplace("module_id", std::string("bocha"));
+                    one.emplace("endpoint", std::string("web-search"));
+                    one.emplace("q", active->clarified_query);
+                    searches.emplace_back(std::move(one));
+                }
+                int ran = 0;
+                for (const auto& s : searches) {
+                    if (active->cancel || active->discovery_searches >= kMaxDiscoverySearches) {
+                        break;
+                    }
+                    if (!s.is_object()) {
+                        continue;
+                    }
+                    std::string mid = s.contains("module_id") ? s.at("module_id").as_string("bocha")
+                                                              : "bocha";
+                    std::string ep = s.contains("endpoint") ? s.at("endpoint").as_string("web-search")
+                                                            : "web-search";
+                    std::string q = s.contains("q") ? s.at("q").as_string(active->clarified_query)
+                                                    : active->clarified_query;
+                    if (q.empty()) {
+                        q = active->clarified_query;
+                    }
+                    normalize_search_target(&mid, &ep);
+                    const auto key = normalize_search_key(mid, ep, q);
+                    if (active->seen_searches.count(key)) {
+                        emit(*active, "plan",
+                             utils::Json(utils::Json::Object{
+                                 {"note", std::string("跳过重复检索：") + mid + "/" + ep + " · " + q},
+                                 {"stage", std::string("requirements")},
+                             }));
+                        continue;
+                    }
+                    active->seen_searches.insert(key);
+                    // Searching event is emitted inside run_search_round — no separate plan card.
+                    run_search_round(*active, mid, ep, q, "requirements", &s);
+                    active->searches_since_ask += 1;
+                    ran += 1;
+                    if (ran >= 2) {
+                        break;
+                    }
+                }
+                continue;
             }
 
             if (action == "ask_user") {
-                // After a user already answered, prefer search/confirm over another ask unless new evidence.
-                if (active->discovery_asks > 0 && active->searches_since_ask == 0 &&
-                    active->discovery_searches < kMaxDiscoverySearches) {
-                    emit(*active, "thinking",
-                         utils::Json(utils::Json::Object{
-                             {"text", std::string("User already answered; searching to refine instead of re-asking.")},
-                             {"stage", std::string("requirements")},
-                         }));
-                    run_search_round(*active, "bocha", "web-search", active->clarified_query,
-                                     "requirements");
-                    active->searches_since_ask += 1;
-                    continue;
-                }
-                if (active->discovery_asks >= kMaxAsks) {
-                    lock_requirements(*active, active->clarified_query,
-                                      std::string("已锁定：") + active->clarified_query);
-                    return;
-                }
-
+                // Model chose to ask → present verbatim and resume the loop (model decides next).
                 std::string prompt =
                     parsed.contains("prompt") ? parsed.at("prompt").as_string("") : "";
                 utils::Json::Array options;
                 if (parsed.contains("options") && parsed.at("options").is_array()) {
                     options = parsed.at("options").as_array();
                 }
-                if (options.size() < 2 || is_vague_ask_prompt(prompt)) {
-                    if (active->discovery_searches == 0) {
-                        run_search_round(*active, "bocha", "web-search", active->clarified_query,
-                                         "requirements");
-                        active->searches_since_ask += 1;
-                        continue;
-                    }
-                    options = choices_from_memory(*active);
-                    prompt = "根据已检索到的线索，请选择最接近你意图的方向：";
-                }
                 if (!present_discovery_choices(*active, prompt, std::move(options), thinking)) {
                     return;
                 }
-                finalize_after_user_choice(*active);
-                return;
+                continue;
             }
 
-            // Unknown action → search or concrete choices, never vague free-text.
+            // Unknown action → do not invent a user quiz; search once or retry.
             if (active->discovery_searches == 0) {
                 run_search_round(*active, "bocha", "web-search", active->clarified_query,
                                  "requirements");
                 active->searches_since_ask += 1;
                 continue;
             }
-            if (active->discovery_asks >= kMaxAsks) {
-                lock_requirements(*active, active->clarified_query,
-                                  std::string("已锁定：") + active->clarified_query);
-                return;
-            }
-            if (!present_discovery_choices(*active,
-                                           "请选择你更想深入的调研方向：",
-                                           choices_from_memory(*active), thinking)) {
-                return;
-            }
-            finalize_after_user_choice(*active);
-            return;
+            continue;
         }
 
         active->run.status = RunStatus::Cancelled;
@@ -1134,7 +1582,8 @@ void ResearchOrchestrator::worker_main(std::shared_ptr<ActiveRun> active) {
                 }
             }
             lock_requirements(*active, active->clarified_query,
-                              std::string("需求确定阶段异常收尾：") + ex.what());
+                              active->clarified_query.empty() ? active->run.query
+                                                              : active->clarified_query);
         } catch (...) {
             active->run.status = RunStatus::Failed;
             active->run.last_error = ex.what();
@@ -1154,20 +1603,39 @@ std::string ResearchOrchestrator::build_deep_system_prompt(ActiveRun& active) {
         << "Need is LOCKED. Answer it by researching — do not re-clarify from scratch.\n"
         << "DEPTH = layers along ONE direction; BREADTH = number of directions.\n"
         << "Prefer module=" << active.preferred_module << " endpoint=" << active.preferred_endpoint
-        << (active.prefer_github ? " (GitHub: dig into code via github_rest/code).\n" : ".\n")
+        << (active.prefer_github
+             ? " (GitHub: dig into code via github_rest/code).\n"
+             : (active.preferred_module == "twtapi"
+                    ? " (Twitter/X via twtapi Search/UserTweets/TweetDetail — see twtapi SKILL).\n"
+                    : ".\n"))
         << "Memory is a radiating tree (branches = side-paths / future follow-ups). "
-           "Full memory bodies are NOT auto-injected — catalogs are mandatory every turn; "
-           "you choose what to open.\n"
-        << "Emit JSON ONLY each turn:\n"
-        << R"JS({"thinking":"...","action":"search|github_rest|knowledge|memory_get|memory_chain|memory_add|ask_user|open_direction|deepen|synthesize",...)JS"
+           "Catalogs (directory JSON) are provided each turn — incomplete JSON is fine. "
+           "Open what you need via actions: memory_get / memory_chain / knowledge_get. "
+           "Follow-ups on the same project MUST reuse prior findings this way before re-searching.\n"
+        << "Emit JSON each turn (fields you need; engine tolerates partial objects):\n"
+        << R"JS({"thinking":"...","action":"search|github_rest|knowledge|knowledge_get|memory_get|memory_chain|memory_add|ask_user|open_direction|deepen|synthesize",...)JS"
         << "\n"
-        << "- search: {module_id,endpoint,q,direction_id}\n"
+        << "- search: {module_id,endpoint,q,direction_id,...}\n"
+        << "  Twitter/X (module_id=twtapi): endpoint=Search|UserByScreenName|UserTweets|TweetDetail|Trends|status; "
+           "pass q/type/count or username/user_id/tweet_id/woeid as needed. "
+           "Only when twtapi secret_configured=true.\n"
+        << "  Example: {\"action\":\"search\",\"module_id\":\"twtapi\",\"endpoint\":\"Search\",\"q\":\"from:openai\",\"type\":\"Latest\"}\n"
         << "- github_rest: {path,direction_id}\n"
-        << "- knowledge: {valid:bool, nodes:[...], edges:[...]} only when valid=true\n"
+        << "- knowledge: {valid:bool, nodes:[...], edges:[...]} ONLY you build the graph; "
+           "engine never fabricates nodes. valid=true for every meaningful reusable finding "
+           "(entities/definitions/sourced claims/APIs/relationships). "
+           "Each node MUST include title, content (full evidence/body), summary (your own short "
+           "synthesis — not a copy of the title), and weight in [0,1] (1=core to the locked need). "
+           "Include edges with from_id + to_id + relation (aliases from/to also accepted). "
+           "Do not synthesize with an empty graph when solid evidence exists. "
+           "If nodes already exist but edges are empty, your NEXT action MUST be knowledge "
+           "that writes edges — do not keep planning.\n"
+        << "- knowledge_get: {id} load one knowledge node body\n"
         << "- memory_get: {id} load one memory body\n"
         << "- memory_chain: {id} load full chain for tip id\n"
         << "- memory_add: {title,summary?,body,kind?,direction_id?} append stage memory on current branch\n"
-        << "- ask_user: {prompt,options:[...]}\n"
+        << "- ask_user: {prompt,options:[...]} ONLY for necessary unknowns you must not guess; "
+           "presented verbatim; no ask quota\n"
         << "- open_direction / deepen / synthesize as before\n";
     return oss.str();
 }
@@ -1210,6 +1678,215 @@ std::string ResearchOrchestrator::fetch_mandatory_catalogs(ActiveRun& active) {
         break;
     }
     return oss.str();
+}
+
+bool ResearchOrchestrator::project_has_prior_context(const std::string& project_id) {
+    if (project_id.empty()) {
+        return false;
+    }
+    try {
+        auto db = ws_.open_project_db(project_id);
+        MemoryTreeStore mem;
+        KnowledgeGraphStore kg;
+        mem.open(db);
+        kg.open(db);
+        const auto mc = mem.catalog_json(project_id);
+        const auto kc = kg.catalog_json(project_id);
+        mem.close();
+        kg.close();
+        db.close();
+        const bool has_mem =
+            mc.is_object() &&
+            ((mc.contains("entries") && mc.at("entries").is_array() &&
+              !mc.at("entries").as_array().empty()) ||
+             (mc.contains("branches") && mc.at("branches").is_array() &&
+              !mc.at("branches").as_array().empty()));
+        const bool has_kg =
+            kc.is_object() &&
+            ((kc.contains("nodes") && kc.at("nodes").is_array() && !kc.at("nodes").as_array().empty()) ||
+             (kc.contains("entries") && kc.at("entries").is_array() &&
+              !kc.at("entries").as_array().empty()));
+        return has_mem || has_kg;
+    } catch (...) {
+        return false;
+    }
+}
+
+void ResearchOrchestrator::hydrate_prior_project_context(ActiveRun& active) {
+    if (!active.has_project_context || active.run.project_id.empty()) {
+        return;
+    }
+    try {
+        auto db = ws_.open_project_db(active.run.project_id);
+        MemoryTreeStore mem;
+        mem.open(db);
+        const auto entries = mem.list_entries(active.run.project_id);
+        const MemoryEntry* best_report = nullptr;
+        for (const auto& e : entries) {
+            if (e.kind != "report" || e.body.empty()) {
+                continue;
+            }
+            if (!best_report || e.updated_at >= best_report->updated_at) {
+                best_report = &e;
+            }
+        }
+        if (best_report) {
+            emit(active, "thinking",
+                 utils::Json(utils::Json::Object{
+                     {"text", std::string("已从项目记忆加载先前报告: ") + best_report->title + " (" +
+                                  best_report->id + ")"},
+                     {"stage", std::string("research")},
+                     {"memory_id", best_report->id},
+                 }));
+            active.dialogue += "prior_report id=" + best_report->id + " title=" + best_report->title +
+                               "\n" + best_report->body + "\n";
+        }
+
+        // Compact prior evidence titles from the latest completed run (bodies stay in DB).
+        EvidenceStore store;
+        const auto files =
+            utils::path_from_utf8(ws_.data_root()) / "projects" / active.run.project_id / "files";
+        store.open(db, files);
+        std::string prior_run_id;
+        for (const auto& run : store.list_runs()) {
+            if (run.id == active.run.id) {
+                continue;
+            }
+            if (run.status == RunStatus::Completed) {
+                prior_run_id = run.id;
+                break;
+            }
+        }
+        if (!prior_run_id.empty()) {
+            auto items = store.list_evidence(prior_run_id);
+            std::ostringstream oss;
+            oss << "prior_evidence_index run=" << prior_run_id << " count=" << items.size() << ":\n";
+            const int limit = std::min(static_cast<int>(items.size()), 40);
+            for (int i = 0; i < limit; ++i) {
+                const auto& it = items[static_cast<std::size_t>(i)];
+                oss << "- [" << it.id << "] " << it.module_id << " " << it.title;
+                if (!it.source_uri.empty()) {
+                    oss << " | " << it.source_uri;
+                }
+                oss << "\n";
+            }
+            if (static_cast<int>(items.size()) > limit) {
+                oss << "- … +" << (static_cast<int>(items.size()) - limit) << " more\n";
+            }
+            active.dialogue += oss.str();
+            emit(active, "plan",
+                 utils::Json(utils::Json::Object{
+                     {"stage", std::string("research")},
+                     {"note", std::string("hydrated prior evidence index: ") +
+                                  std::to_string(items.size()) + " items from " + prior_run_id},
+                 }));
+        }
+        store.close();
+        mem.close();
+        db.close();
+    } catch (...) {
+    }
+}
+
+bool ResearchOrchestrator::handle_memory_read_action(ActiveRun& active, const utils::Json& parsed,
+                                                     const std::string& action) {
+    if (action == "memory_get") {
+        const auto id = parsed.contains("id") ? parsed.at("id").as_string("") : "";
+        try {
+            auto db = ws_.open_project_db(active.run.project_id);
+            MemoryTreeStore mem;
+            mem.open(db);
+            auto entry = mem.get_entry(active.run.project_id, id);
+            if (entry) {
+                emit(active, "thinking",
+                     utils::Json(utils::Json::Object{
+                         {"text", std::string("读取记忆: ") + entry->title + "\n" + entry->body},
+                         {"stage", active.stage_research ? std::string("research")
+                                                         : std::string("requirements")},
+                         {"memory_id", entry->id},
+                     }));
+                active.dialogue += "memory_get: " + entry->title + "\n" + entry->body + "\n";
+                active.stagnant_turns = 0;
+            } else {
+                emit(active, "plan",
+                     utils::Json(utils::Json::Object{
+                         {"note", std::string("memory_get: 未找到 id=") + id},
+                         {"stage", active.stage_research ? std::string("research")
+                                                         : std::string("requirements")},
+                     }));
+                active.stagnant_turns += 1;
+            }
+            mem.close();
+            db.close();
+        } catch (...) {
+            active.stagnant_turns += 1;
+        }
+        return true;
+    }
+    if (action == "memory_chain") {
+        const auto id =
+            parsed.contains("id") ? parsed.at("id").as_string("") : active.memory_tip_id;
+        try {
+            auto db = ws_.open_project_db(active.run.project_id);
+            MemoryTreeStore mem;
+            mem.open(db);
+            auto chain = mem.chain_json(active.run.project_id, id);
+            emit(active, "plan",
+                 utils::Json(utils::Json::Object{
+                     {"stage", active.stage_research ? std::string("research")
+                                                     : std::string("requirements")},
+                     {"memory_chain", chain},
+                 }));
+            active.dialogue += "memory_chain:\n" + chain.dump() + "\n";
+            mem.close();
+            db.close();
+            active.stagnant_turns = 0;
+        } catch (...) {
+            active.stagnant_turns += 1;
+        }
+        return true;
+    }
+    if (action == "knowledge_get") {
+        const auto id = parsed.contains("id") ? parsed.at("id").as_string("") : "";
+        try {
+            auto db = ws_.open_project_db(active.run.project_id);
+            KnowledgeGraphStore kg;
+            kg.open(db);
+            auto node = kg.get_node(active.run.project_id, id);
+            if (node) {
+                emit(active, "thinking",
+                     utils::Json(utils::Json::Object{
+                         {"text", std::string("读取知识: ") + node->title + "\n" +
+                                      (node->summary.empty() ? node->content : node->summary) +
+                                      (node->content.empty() || node->summary.empty()
+                                           ? ""
+                                           : ("\n---\n" + node->content))},
+                         {"stage", active.stage_research ? std::string("research")
+                                                         : std::string("requirements")},
+                         {"knowledge_id", node->id},
+                     }));
+                active.dialogue +=
+                    "knowledge_get: " + node->title + "\nsummary: " + node->summary +
+                    "\nweight: " + std::to_string(node->weight < 0 ? 0.5 : node->weight) + "\n" +
+                    node->content + "\n";
+                active.stagnant_turns = 0;
+            } else {
+                emit(active, "plan",
+                     utils::Json(utils::Json::Object{
+                         {"note", std::string("knowledge_get: 未找到 id=") + id},
+                         {"stage", active.stage_research ? std::string("research")
+                                                         : std::string("requirements")},
+                     }));
+                active.stagnant_turns += 1;
+            }
+            kg.close();
+            db.close();
+        } catch (...) {
+            active.stagnant_turns += 1;
+        }
+        return true;
+    }
+    return false;
 }
 
 void ResearchOrchestrator::ensure_memory_branch(ActiveRun& active) {
@@ -1355,18 +2032,17 @@ std::string ResearchOrchestrator::knowledge_index_text(ActiveRun& active) {
 void ResearchOrchestrator::analyze_and_route(ActiveRun& active) {
     const auto& need = active.clarified_query.empty() ? active.run.query : active.clarified_query;
     const auto& q = active.run.query;
-    active.prefer_github =
-        need.find("github") != std::string::npos || need.find("GitHub") != std::string::npos ||
-        need.find("仓库") != std::string::npos || need.find("repo") != std::string::npos ||
-        need.find("XAIOP") != std::string::npos || need.find("xaiop") != std::string::npos ||
-        need.find("AboutUip") != std::string::npos || q.find("github") != std::string::npos ||
-        q.find("GitHub") != std::string::npos || q.find("XAIOP") != std::string::npos;
+    // Prefer GitHub when the need looks repo-shaped. Do not treat unrelated brand names as a trigger.
+    active.prefer_github = looks_like_github_need(need) || looks_like_github_need(q);
 
     if (active.prefer_github) {
         active.preferred_module = "github";
         // Code Search is only ~10 req/min and Chinese free-text queries return noise.
         // Prefer repository search + REST for "find author/repo" needs.
         active.preferred_endpoint = "repositories";
+    } else if (looks_like_twitter_need(need) || looks_like_twitter_need(q)) {
+        active.preferred_module = "twtapi";
+        active.preferred_endpoint = "Search";
     } else {
         active.preferred_module = "bocha";
         active.preferred_endpoint = "web-search";
@@ -1374,8 +2050,12 @@ void ResearchOrchestrator::analyze_and_route(ActiveRun& active) {
 
     std::ostringstream think;
     think << "已锁定需求，进入深度调研。分析：优先模块=" << active.preferred_module
-          << " / " << active.preferred_endpoint
-          << "。精度限制的是单方向深度层数（非广度）。";
+          << " / " << active.preferred_endpoint << "。";
+    if (active.budget.ignore_cost) {
+        think << "精度=最大：不计成本，以准确度为先，可持续深入调研。";
+    } else {
+        think << "精度档位约束单方向深度层（快速/普通/深度有上限；最大无上限）。";
+    }
     emit(active, "thinking",
          utils::Json(utils::Json::Object{
              {"text", think.str()},
@@ -1388,6 +2068,7 @@ void ResearchOrchestrator::analyze_and_route(ActiveRun& active) {
              {"preferred_endpoint", active.preferred_endpoint},
              {"prefer_github", active.prefer_github},
              {"max_depth_layers", static_cast<std::int64_t>(active.budget.max_depth_layers)},
+             {"ignore_cost", active.budget.ignore_cost},
          }));
 
     // Seed with authenticated REST when owner/repo can be parsed — avoid burning Code Search quota.
@@ -1398,12 +2079,26 @@ void ResearchOrchestrator::analyze_and_route(ActiveRun& active) {
 
 void ResearchOrchestrator::plan_directions(ActiveRun& active) {
     auto system = build_deep_system_prompt(active);
+    const auto catalogs = fetch_mandatory_catalogs(active);
     std::ostringstream user;
-    user << "Locked need:\n" << active.clarified_query << "\n\n"
+    user << "Locked need:\n" << active.clarified_query << "\n\n";
+    if (active.has_project_context) {
+        user << "## FOLLOW-UP — prior project data is available\n"
+             << "Catalogs below list prior memory/knowledge. Dialogue may already include "
+                "prior_report / prior_evidence_index. Do NOT claim the project is empty just "
+                "because this-run search hits are 0. Prefer reading/using prior findings "
+                "(especially report kind) before proposing blind inventory searches.\n\n";
+    }
+    user << catalogs << "\n"
          << evidence_index_text(active) << "\n"
          << "Propose 1-4 investigation DIRECTIONS (breadth). JSON ONLY:\n"
          << R"JS({"thinking":"...","directions":[{"id":"d1","label":"方向短名"}]})JS"
-         << "\nDo not exceed soft max directions=" << active.budget.max_directions << ".\n";
+         << "\n";
+    if (active.budget.max_directions < 0) {
+        user << "Direction count is unlimited at Maximum — open what accuracy needs.\n";
+    } else {
+        user << "Do not exceed soft max directions=" << active.budget.max_directions << ".\n";
+    }
     auto raw = ask_ai_json(active, system, user.str());
     auto parsed = try_parse_json_object(raw);
     if (parsed.is_object() && parsed.contains("directions") && parsed.at("directions").is_array()) {
@@ -1425,13 +2120,7 @@ void ResearchOrchestrator::plan_directions(ActiveRun& active) {
             }
             active.directions.push_back(std::move(dir));
         }
-        if (parsed.contains("thinking")) {
-            emit(active, "thinking",
-                 utils::Json(utils::Json::Object{
-                     {"text", parsed.at("thinking").as_string("")},
-                     {"stage", std::string("research")},
-                 }));
-        }
+        // Thinking already streamed via ask_ai_json.
     }
     if (active.directions.empty()) {
         ResearchDirection dir;
@@ -1461,7 +2150,8 @@ void ResearchOrchestrator::open_direction(ActiveRun& active, const std::string& 
     if (label.empty()) {
         return;
     }
-    if (static_cast<int>(active.directions.size()) >= active.budget.max_directions) {
+    if (active.budget.max_directions >= 0 &&
+        static_cast<int>(active.directions.size()) >= active.budget.max_directions) {
         return;
     }
     ResearchDirection dir;
@@ -1501,9 +2191,11 @@ bool ResearchOrchestrator::deepen_direction(ActiveRun& active, const std::string
     return false;
 }
 
-void ResearchOrchestrator::apply_knowledge_ops(ActiveRun& active, const utils::Json& payload) {
+ResearchOrchestrator::KnowledgeWriteResult
+ResearchOrchestrator::apply_knowledge_ops(ActiveRun& active, const utils::Json& payload) {
+    KnowledgeWriteResult result;
     if (!payload.is_object()) {
-        return;
+        return result;
     }
     const bool valid = !payload.contains("valid") || payload.at("valid").as_bool(true);
     if (!valid) {
@@ -1512,7 +2204,7 @@ void ResearchOrchestrator::apply_knowledge_ops(ActiveRun& active, const utils::J
                  {"text", std::string("模型判定知识无效，未写入关联图。")},
                  {"stage", std::string("research")},
              }));
-        return;
+        return result;
     }
 
     try {
@@ -1534,6 +2226,12 @@ void ResearchOrchestrator::apply_knowledge_ops(ActiveRun& active, const utils::J
                 node.run_id = active.run.id;
                 node.title = n.contains("title") ? n.at("title").as_string("") : "";
                 node.content = n.contains("content") ? n.at("content").as_string("") : "";
+                node.summary = n.contains("summary") ? n.at("summary").as_string("") : "";
+                if (node.summary.empty() && !node.content.empty()) {
+                    node.summary =
+                        node.content.substr(0, std::min<std::size_t>(node.content.size(), 240));
+                }
+                node.weight = n.contains("weight") ? n.at("weight").as_number(0.5) : 0.5;
                 node.kind = n.contains("kind") ? n.at("kind").as_string("fact") : "fact";
                 node.direction_id =
                     n.contains("direction_id") ? n.at("direction_id").as_string("") : "";
@@ -1544,12 +2242,14 @@ void ResearchOrchestrator::apply_knowledge_ops(ActiveRun& active, const utils::J
                     continue;
                 }
                 kg.upsert_node(node);
+                result.nodes_written += 1;
                 emit(active, "evidence",
                      utils::Json(utils::Json::Object{
                          {"kind", std::string("knowledge")},
                          {"evidence_id", node.id},
                          {"title", node.title},
-                         {"snippet", node.content},
+                         {"snippet", node.summary.empty() ? node.content : node.summary},
+                         {"weight", node.weight < 0 ? 0.5 : node.weight},
                          {"keyword", node.direction_id},
                          {"stage", std::string("research")},
                      }));
@@ -1558,6 +2258,7 @@ void ResearchOrchestrator::apply_knowledge_ops(ActiveRun& active, const utils::J
         if (payload.contains("edges") && payload.at("edges").is_array()) {
             for (const auto& e : payload.at("edges").as_array()) {
                 if (!e.is_object()) {
+                    result.edges_skipped += 1;
                     continue;
                 }
                 KnowledgeEdge edge;
@@ -1566,13 +2267,40 @@ void ResearchOrchestrator::apply_knowledge_ops(ActiveRun& active, const utils::J
                     edge.id = make_id("ke_");
                 }
                 edge.project_id = active.run.project_id;
-                edge.from_id = e.contains("from_id") ? e.at("from_id").as_string("") : "";
-                edge.to_id = e.contains("to_id") ? e.at("to_id").as_string("") : "";
-                edge.relation = e.contains("relation") ? e.at("relation").as_string("related") : "related";
+                // Accept common aliases — models often emit from/to or source/target.
+                auto pick_id = [&](std::initializer_list<const char*> keys) -> std::string {
+                    for (const char* k : keys) {
+                        if (e.contains(k)) {
+                            auto v = e.at(k).as_string("");
+                            if (!v.empty()) {
+                                return v;
+                            }
+                        }
+                    }
+                    return {};
+                };
+                edge.from_id = pick_id({"from_id", "from", "source_id", "source", "src", "src_id"});
+                edge.to_id = pick_id({"to_id", "to", "target_id", "target", "dst", "dst_id"});
+                edge.relation = e.contains("relation") ? e.at("relation").as_string("related")
+                                : (e.contains("type") ? e.at("type").as_string("related")
+                                                      : (e.contains("rel") ? e.at("rel").as_string("related")
+                                                                          : "related"));
                 if (edge.from_id.empty() || edge.to_id.empty()) {
+                    result.edges_skipped += 1;
                     continue;
                 }
                 kg.upsert_edge(edge);
+                result.edges_written += 1;
+            }
+            if (result.edges_skipped > 0 || result.edges_written > 0) {
+                emit(active, "plan",
+                     utils::Json(utils::Json::Object{
+                         {"stage", std::string("research")},
+                         {"note", std::string("knowledge edges written=") +
+                                      std::to_string(result.edges_written) + " skipped=" +
+                                      std::to_string(result.edges_skipped) +
+                                      " (need from_id/to_id or from/to aliases)"},
+                     }));
             }
         }
 
@@ -1589,6 +2317,23 @@ void ResearchOrchestrator::apply_knowledge_ops(ActiveRun& active, const utils::J
                  {"text", std::string("知识关联图写入失败: ") + ex.what()},
                  {"stage", std::string("research")},
              }));
+    }
+    return result;
+}
+
+void ResearchOrchestrator::publish_knowledge_graph_snapshot(ActiveRun& active) {
+    try {
+        auto db = ws_.open_project_db(active.run.project_id);
+        KnowledgeGraphStore kg;
+        kg.open(db);
+        emit(active, "plan",
+             utils::Json(utils::Json::Object{
+                 {"stage", std::string("research")},
+                 {"knowledge_graph", kg.graph_json(active.run.project_id)},
+             }));
+        kg.close();
+        db.close();
+    } catch (...) {
     }
 }
 
@@ -1959,7 +2704,13 @@ std::string build_generic_evidence_report(const std::string& need, const std::st
     if (n == 0) {
         fb << "_（暂无可用证据。）_\n";
     }
-    fb << "\n## 说明\n\n引擎根据证据自动整理（模型未返回完整综合）。\n";
+    fb << "\n## 说明\n\n";
+    if (n == 0) {
+        fb << "本轮未收集到可用证据，且模型未能生成完整综合。请检查 AI 密钥/模型，"
+              "或补充更具体的 GitHub 链接后再试。\n";
+    } else {
+        fb << "以上为引擎根据证据自动整理的摘要（模型未返回完整综合）。\n";
+    }
     (void)query;
     return fb.str();
 }
@@ -1982,10 +2733,7 @@ std::string extract_github_owner(const std::string& blob) {
             return token;
         }
     }
-    if (icontains(blob, "AboutUip")) {
-        return "AboutUip";
-    }
-    // user:login or github.com/login
+    // user:login or github.com/login[/repo]
     const auto user_key = blob.find("user:");
     if (user_key != std::string::npos) {
         std::string rest = blob.substr(user_key + 5);
@@ -2018,12 +2766,157 @@ std::string extract_github_owner(const std::string& blob) {
             return token;
         }
     }
+    // owner/repo shorthand
+    for (size_t i = 0; i + 2 < blob.size(); ++i) {
+        const char c = blob[i];
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))) {
+            continue;
+        }
+        size_t j = i;
+        while (j < blob.size()) {
+            const char d = blob[j];
+            if ((d >= 'A' && d <= 'Z') || (d >= 'a' && d <= 'z') || (d >= '0' && d <= '9') || d == '-' ||
+                d == '_') {
+                ++j;
+            } else {
+                break;
+            }
+        }
+        if (j < blob.size() && blob[j] == '/' && j + 1 < blob.size()) {
+            const auto owner = blob.substr(i, j - i);
+            char n = blob[j + 1];
+            if (((n >= 'A' && n <= 'Z') || (n >= 'a' && n <= 'z') || (n >= '0' && n <= '9')) &&
+                owner.size() >= 2 && owner != "http" && owner != "https") {
+                return owner;
+            }
+        }
+        i = j;
+    }
     return {};
 }
 
 std::string extract_github_repo(const std::string& blob) {
-    if (icontains(blob, "XAIOP")) {
-        return "XAIOP";
+    // github.com/owner/repo
+    const auto gh = blob.find("github.com/");
+    if (gh != std::string::npos) {
+        std::string rest = blob.substr(gh + 11);
+        const auto slash = rest.find('/');
+        if (slash != std::string::npos && slash + 1 < rest.size()) {
+            std::string token;
+            for (size_t i = slash + 1; i < rest.size(); ++i) {
+                const char c = rest[i];
+                if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                    c == '-' || c == '_' || c == '.') {
+                    token.push_back(c);
+                } else {
+                    break;
+                }
+            }
+            if (token.size() >= 2) {
+                return token;
+            }
+        }
+    }
+    // owner/repo shorthand
+    for (size_t i = 0; i + 2 < blob.size(); ++i) {
+        const char c = blob[i];
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))) {
+            continue;
+        }
+        size_t j = i;
+        while (j < blob.size()) {
+            const char d = blob[j];
+            if ((d >= 'A' && d <= 'Z') || (d >= 'a' && d <= 'z') || (d >= '0' && d <= '9') || d == '-' ||
+                d == '_') {
+                ++j;
+            } else {
+                break;
+            }
+        }
+        if (j < blob.size() && blob[j] == '/' && j + 1 < blob.size()) {
+            std::string token;
+            for (size_t k = j + 1; k < blob.size(); ++k) {
+                const char e = blob[k];
+                if ((e >= 'A' && e <= 'Z') || (e >= 'a' && e <= 'z') || (e >= '0' && e <= '9') ||
+                    e == '-' || e == '_' || e == '.') {
+                    token.push_back(e);
+                } else {
+                    break;
+                }
+            }
+            const auto owner = blob.substr(i, j - i);
+            if (token.size() >= 2 && owner != "http" && owner != "https") {
+                return token;
+            }
+        }
+        i = j;
+    }
+    // Labels: 项目：Name / 仓库：Name / repo: Name / project Name
+    const char* labels[] = {"项目：", "项目:", "仓库：", "仓库:", "repo:", "Repo:", "repository:",
+                            "项目是", "仓库是"};
+    for (const char* label : labels) {
+        const auto pos = blob.find(label);
+        if (pos == std::string::npos) {
+            continue;
+        }
+        const auto n = std::char_traits<char>::length(label);
+        std::string rest = blob.substr(pos + n);
+        while (!rest.empty() && (rest.front() == ' ' || rest.front() == '\t' || rest.front() == '\"' ||
+                                 rest.front() == '\'')) {
+            rest.erase(rest.begin());
+        }
+        std::string token;
+        for (char c : rest) {
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
+                c == '_' || c == '.') {
+                token.push_back(c);
+            } else if (!token.empty()) {
+                break;
+            }
+        }
+        if (token.size() >= 2) {
+            return token;
+        }
+    }
+    // Standalone CamelCase / kebab project token near "github" (e.g. ZerOS-System).
+    if (icontains(blob, "github") || blob.find("仓库") != std::string::npos ||
+        blob.find("开源") != std::string::npos) {
+        std::string best;
+        for (size_t i = 0; i < blob.size(); ++i) {
+            const char c = blob[i];
+            if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
+                continue;
+            }
+            size_t j = i;
+            bool has_upper = false;
+            bool has_sep = false;
+            while (j < blob.size()) {
+                const char d = blob[j];
+                if ((d >= 'A' && d <= 'Z') || (d >= 'a' && d <= 'z') || (d >= '0' && d <= '9') ||
+                    d == '-' || d == '_') {
+                    if (d >= 'A' && d <= 'Z') {
+                        has_upper = true;
+                    }
+                    if (d == '-' || d == '_') {
+                        has_sep = true;
+                    }
+                    ++j;
+                } else {
+                    break;
+                }
+            }
+            auto token = blob.substr(i, j - i);
+            if (token.size() >= 4 && token.size() <= 64 && (has_upper || has_sep) &&
+                !icontains(token, "github") && !icontains(token, "http")) {
+                if (token.size() > best.size()) {
+                    best = token;
+                }
+            }
+            i = j;
+        }
+        if (!best.empty()) {
+            return best;
+        }
     }
     return {};
 }
@@ -2047,12 +2940,28 @@ void ResearchOrchestrator::try_github_direct_lookup(ActiveRun& active) {
              {"stage", active.stage_research ? std::string("research") : std::string("requirements")},
          }));
 
+    if (owner.empty() && !repo.empty()) {
+        // Have a project name but no owner — search repositories by name.
+        emit(active, "thinking",
+             utils::Json(utils::Json::Object{
+                 {"text", std::string("未解析到作者，按仓库名搜索: ") + repo},
+                 {"stage", active.stage_research ? std::string("research")
+                                                 : std::string("requirements")},
+             }));
+        try {
+            run_search_round(active, "github", "repositories", repo, 
+                             active.stage_research ? "research" : "requirements");
+        } catch (...) {
+        }
+        return;
+    }
+
     if (owner.empty()) {
         emit(active, "thinking",
              utils::Json(utils::Json::Object{
                  {"text",
-                  std::string("无法从需求解析 GitHub 用户名。Search API 403 时请确认已登录 GitHub / "
-                              "PAT 有效；也可在追问中给出 github.com/用户/仓库 链接。")},
+                  std::string("无法从需求解析 GitHub 用户名/仓库。请补充 github.com/用户/仓库 "
+                              "或明确作者与项目名。")},
                  {"stage", active.stage_research ? std::string("research")
                                                  : std::string("requirements")},
              }));
@@ -2070,52 +2979,96 @@ void ResearchOrchestrator::try_github_direct_lookup(ActiveRun& active) {
 
 void ResearchOrchestrator::finalize_research(ActiveRun& active, const std::string& report) {
     active.run.status = RunStatus::Synthesizing;
+    emit(active, "thinking",
+         utils::Json(utils::Json::Object{
+             {"text", std::string("正在生成调研报告…")},
+             {"stage", std::string("research")},
+         }));
+
     std::string md = report;
+
+    // Always prefer a fresh model synthesis when the caller did not supply a full report.
+    // Pre-baked evidence dumps are fallback only after AI fails.
+    if (md.empty() || md.find("引擎根据证据自动整理") != std::string::npos) {
+        auto system = build_deep_system_prompt(active);
+        std::ostringstream user;
+        user << "Write the final Markdown research report for the locked need.\n"
+             << "Use the user's language. Be concrete; cite evidence titles/URLs when present.\n"
+             << "Need:\n" << active.clarified_query << "\n\n"
+             << "Original query:\n" << active.run.query << "\n\n"
+             << directions_text(active) << "\n"
+             << evidence_index_text(active) << "\n"
+             << knowledge_index_text(active) << "\n"
+             << "Return a JSON object with keys thinking (brief) and markdown (full report). "
+                "Do not repeat these instructions in the output.\n"
+             << "If evidence is thin, still write a structured report of what is known and what is missing.\n";
+        auto raw = ask_ai_json(active, system, user.str());
+        auto parsed = try_parse_json_object(raw);
+        if (parsed.is_object()) {
+            // Thinking already streamed via ask_ai_json.
+            if (parsed.contains("markdown")) {
+                md = parsed.at("markdown").as_string("");
+            }
+        }
+        // Accept plain Markdown if the model ignored JSON wrapping.
+        if (md.empty() && !raw.empty()) {
+            auto t = raw;
+            while (!t.empty() && (t.front() == ' ' || t.front() == '\n' || t.front() == '\r' ||
+                                  t.front() == '`')) {
+                t.erase(t.begin());
+            }
+            if (!t.empty() && t.rfind("```", 0) == 0) {
+                // strip markdown fence
+                auto end = t.find("```", 3);
+                if (end != std::string::npos) {
+                    t = t.substr(3, end - 3);
+                    if (t.rfind("markdown", 0) == 0 || t.rfind("md", 0) == 0) {
+                        auto nl = t.find('\n');
+                        if (nl != std::string::npos) {
+                            t = t.substr(nl + 1);
+                        }
+                    }
+                }
+            }
+            if (!t.empty() && (t.front() == '#' || t.find("## ") != std::string::npos ||
+                               t.find('\n') != std::string::npos || t.size() > 80)) {
+                md = t;
+            }
+        }
+    }
+
     if (md.empty() && has_github_repo_evidence(active.memory)) {
         md = build_github_facts_report(
             active.clarified_query.empty() ? active.run.query : active.clarified_query, active.run.query,
             active.memory);
     }
     if (md.empty()) {
-        auto system = build_deep_system_prompt(active);
-        std::ostringstream user;
-        user << "Write the final Markdown research report for the locked need.\n"
-             << "Need:\n" << active.clarified_query << "\n\n"
-             << directions_text(active) << "\n"
-             << evidence_index_text(active) << "\n"
-             << knowledge_index_text(active) << "\n"
-             << "JSON ONLY: {\"markdown\":\"...full report...\"}\n";
-        auto raw = ask_ai_json(active, system, user.str());
-        auto parsed = try_parse_json_object(raw);
-        if (parsed.is_object() && parsed.contains("markdown")) {
-            md = parsed.at("markdown").as_string("");
-        }
-        // Accept plain Markdown if the model ignored JSON wrapping.
-        if (md.empty() && !raw.empty()) {
-            auto t = raw;
-            while (!t.empty() && (t.front() == ' ' || t.front() == '\n' || t.front() == '\r')) {
-                t.erase(t.begin());
-            }
-            if (!t.empty() && (t.front() == '#' || t.find("## ") != std::string::npos ||
-                               t.find("调研") != std::string::npos)) {
-                md = raw;
-            }
-        }
-        if (md.empty()) {
-            md = has_github_repo_evidence(active.memory)
-                     ? build_github_facts_report(
-                           active.clarified_query.empty() ? active.run.query : active.clarified_query,
-                           active.run.query, active.memory)
-                     : build_generic_evidence_report(
-                           active.clarified_query.empty() ? active.run.query : active.clarified_query,
-                           active.run.query, active.memory, active.github_fail_streak);
-        }
+        emit(active, "thinking",
+             utils::Json(utils::Json::Object{
+                 {"text", std::string("模型未产出报告，改用已收集证据生成摘要。")},
+                 {"stage", std::string("research")},
+             }));
+        md = build_generic_evidence_report(
+            active.clarified_query.empty() ? active.run.query : active.clarified_query,
+            active.run.query, active.memory, active.github_fail_streak);
     }
+
     active.report_markdown = md;
     active.run.summary = active.clarified_query;
     active.run.status = RunStatus::Completed;
 
-    emit(active, "synthesize",
+    // Persist report into project memory so follow-ups can memory_get it from the catalog.
+    try {
+        ensure_memory_branch(active);
+        append_stage_memory(active, "Research report", md, "report");
+    } catch (...) {
+    }
+
+    
+    // Publish model-authored graph only (engine never fabricates nodes).
+    publish_knowledge_graph_snapshot(active);
+
+emit(active, "synthesize",
          utils::Json(utils::Json::Object{
              {"markdown", md},
              {"summary", active.clarified_query},
@@ -2140,29 +3093,30 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
     if (active.cancel) {
         return;
     }
+    hydrate_prior_project_context(active);
     analyze_and_route(active);
     ensure_memory_branch(active);
     plan_directions(active);
     append_stage_memory(active, "Directions planned", directions_text(active), "note");
 
-    // GitHub author/repo needs: REST seed already has facts — emit a real report now.
-    // Avoid AI thrash loops that spam the UI and still produce empty synthesis.
+    // GitHub author/repo needs with REST facts: still ask the model to write the report.
     if (active.prefer_github && has_github_repo_evidence(active.memory)) {
         emit(active, "thinking",
              utils::Json(utils::Json::Object{
                  {"text",
-                  std::string("已通过 GitHub REST 定位到作者/仓库，正在生成调研报告（跳过重复搜索）。")},
+                  std::string("已通过 GitHub 收集到仓库线索，正在请模型撰写调研报告…")},
                  {"stage", std::string("research")},
              }));
-        finalize_research(active,
-                          build_github_facts_report(
-                              active.clarified_query.empty() ? active.run.query : active.clarified_query,
-                              active.run.query, active.memory));
+        finalize_research(active, "");
         return;
     }
 
-    constexpr int kMaxResearchAiTurns = 24;
-    constexpr int kMaxResearchAsks = 4;
+    // Maximum: ignore cost — only a runaway safety valve (not a research budget).
+    // Other tiers: modest turn budget derived from depth × breadth caps.
+    const int kMaxResearchAiTurns =
+        active.budget.ignore_cost
+            ? 500
+            : std::clamp(8 + active.budget.max_directions * 2 + active.budget.max_depth_layers, 10, 40);
 
     while (!active.cancel && active.research_ai_turns < kMaxResearchAiTurns) {
         {
@@ -2184,7 +3138,34 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
              << " tip=" << active.memory_tip_id << "\n"
              << evidence_index_text(active) << "\n"
              << "Catalogs above are mandatory. Choose next action; open memory/knowledge bodies "
-                "per precision read policy. Prefer deepening before too many directions.\n";
+                "per precision read policy. Prefer deepening before too many directions.\n"
+             << "Knowledge graph: after solid findings, emit action=knowledge (valid=true, "
+                "nodes+edges) BEFORE synthesize. Engine never auto-builds the graph. "
+                "Each node needs title + content + summary (AI synthesis) + weight 0-1. "
+                "Edge objects need from_id+to_id (aliases from/to also work). "
+                "After a knowledge write, trust the refreshed catalog counts — if edges are "
+                "still 0, your previous edges did not land; fix the payload, do not only re-plan.\n";
+        if (active.has_project_context) {
+            user << "FOLLOW-UP: this-run search hits may be empty while prior_report / "
+                    "prior_evidence_index already sit in dialogue — use them (and catalogs) "
+                    "before inventing a from-scratch inventory.\n";
+        }
+        if (active.budget.ignore_cost) {
+            user << "MAXIMUM MODE: ignore cost/time. Keep deepening for accuracy. "
+                    "Do NOT repeat a search that already ran — pick a deeper/different query "
+                    "or synthesize when evidence is solid.\n";
+        }
+        if (!active.seen_searches.empty()) {
+            user << "Already-executed searches (do not repeat these exact module|endpoint|q):\n";
+            int shown = 0;
+            for (const auto& key : active.seen_searches) {
+                if (shown++ >= 24) {
+                    user << "- …\n";
+                    break;
+                }
+                user << "- " << key << "\n";
+            }
+        }
         if (active.prefer_github && has_github_repo_evidence(active.memory)) {
             user << "GitHub REST already returned author/repo facts in the evidence index. "
                     "Prefer action=\"synthesize\" with a Markdown report citing those URLs; "
@@ -2194,30 +3175,48 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
         auto parsed = try_parse_json_object(raw);
 
         if (!parsed.is_object()) {
-            // Model returned non-JSON. If GitHub REST already seeded facts, stop looping
-            // "定位作者… 定位作者…" searches and synthesize from evidence.
+            // Non-JSON / unparseable action. Do NOT re-run clarified_query + direction label
+            // (that produced loops like "ZerOS-System ZerOS-System" while thinking looked fine).
             if (active.prefer_github && has_github_repo_evidence(active.memory)) {
                 finalize_research(active, "");
                 return;
             }
-            if (!active.directions.empty()) {
-                deepen_direction(active, active.directions.front().id);
-                run_search_round(active, active.preferred_module, active.preferred_endpoint,
-                                 active.clarified_query + " " + active.directions.front().label,
-                                 "research");
+            active.stagnant_turns += 1;
+            emit(active, "plan",
+                 utils::Json(utils::Json::Object{
+                     {"note", std::string("本回合未解析到可执行动作。目录/工具仍可用："
+                                          "memory_get、knowledge_get、search、github_rest、synthesize。")},
+                     {"stage", std::string("research")},
+                 }));
+            if (active.prefer_github) {
+                try_github_direct_lookup(active);
+            }
+            // Max still needs a runaway brake for identical no-progress turns.
+            if (active.stagnant_turns >= (active.budget.ignore_cost ? 6 : 3)) {
+                finalize_research(active, "");
+                return;
             }
             continue;
         }
 
-        if (parsed.contains("thinking")) {
-            emit(active, "thinking",
+        if (!parsed.contains("action") || parsed.at("action").as_string("").empty()) {
+            active.stagnant_turns += 1;
+            emit(active, "plan",
                  utils::Json(utils::Json::Object{
-                     {"text", parsed.at("thinking").as_string("")},
+                     {"note", std::string("本回合未给出 action；请自行决定下一步（可读记忆/知识或检索）。")},
                      {"stage", std::string("research")},
                  }));
+            if (active.stagnant_turns >= (active.budget.ignore_cost ? 6 : 3)) {
+                finalize_research(active, "");
+                return;
+            }
+            continue;
         }
+        const auto action = parsed.at("action").as_string("");
 
-        const auto action = parsed.contains("action") ? parsed.at("action").as_string("search") : "search";
+        if (handle_memory_read_action(active, parsed, action)) {
+            continue;
+        }
 
         if (action == "synthesize") {
             finalize_research(active, parsed.contains("markdown") ? parsed.at("markdown").as_string("") : "");
@@ -2226,88 +3225,50 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
 
         if (action == "open_direction") {
             open_direction(active, parsed.contains("label") ? parsed.at("label").as_string("") : "");
+            active.stagnant_turns = 0;
             continue;
         }
 
         if (action == "deepen") {
             const auto did =
                 parsed.contains("direction_id") ? parsed.at("direction_id").as_string("") : "";
-            deepen_direction(active, did);
+            if (!deepen_direction(active, did)) {
+                active.stagnant_turns += 1;
+            } else {
+                active.stagnant_turns = 0;
+            }
             continue;
         }
 
         if (action == "knowledge") {
-            apply_knowledge_ops(active, parsed);
+            const auto wr = apply_knowledge_ops(active, parsed);
+            active.stagnant_turns = 0;
+            // Honest feedback only — model decides next step from refreshed catalogs.
+            emit(active, "plan",
+                 utils::Json(utils::Json::Object{
+                     {"stage", std::string("research")},
+                     {"note", std::string("knowledge applied: nodes=") +
+                                  std::to_string(wr.nodes_written) + " edges=" +
+                                  std::to_string(wr.edges_written) + " edges_skipped=" +
+                                  std::to_string(wr.edges_skipped)},
+                 }));
             continue;
         }
 
         if (action == "memory_add") {
             apply_memory_ops(active, parsed);
-            continue;
-        }
-
-        if (action == "memory_get") {
-            const auto id = parsed.contains("id") ? parsed.at("id").as_string("") : "";
-            try {
-                auto db = ws_.open_project_db(active.run.project_id);
-                MemoryTreeStore mem;
-                mem.open(db);
-                auto entry = mem.get_entry(active.run.project_id, id);
-                if (entry) {
-                    emit(active, "thinking",
-                         utils::Json(utils::Json::Object{
-                             {"text", std::string("读取记忆: ") + entry->title + "\n" + entry->body},
-                             {"stage", std::string("research")},
-                             {"memory_id", entry->id},
-                         }));
-                    active.dialogue += "memory_get: " + entry->title + "\n" + entry->body + "\n";
-                }
-                mem.close();
-                db.close();
-            } catch (...) {
-            }
-            continue;
-        }
-
-        if (action == "memory_chain") {
-            const auto id = parsed.contains("id") ? parsed.at("id").as_string("") : active.memory_tip_id;
-            try {
-                auto db = ws_.open_project_db(active.run.project_id);
-                MemoryTreeStore mem;
-                mem.open(db);
-                auto chain = mem.chain_json(active.run.project_id, id);
-                emit(active, "plan",
-                     utils::Json(utils::Json::Object{
-                         {"stage", std::string("research")},
-                         {"memory_chain", chain},
-                     }));
-                active.dialogue += "memory_chain:\n" + chain.dump() + "\n";
-                mem.close();
-                db.close();
-            } catch (...) {
-            }
+            active.stagnant_turns = 0;
             continue;
         }
 
         if (action == "ask_user") {
-            if (active.research_asks >= kMaxResearchAsks) {
-                continue;
-            }
+            // No ask quota — model asks only for necessary unknowns; present verbatim.
             active.research_asks += 1;
             std::string prompt = parsed.contains("prompt") ? parsed.at("prompt").as_string("")
-                                                           : "请确认或调整当前调研方向：";
+                                                           : "";
             utils::Json::Array options;
             if (parsed.contains("options") && parsed.at("options").is_array()) {
                 options = parsed.at("options").as_array();
-            }
-            if (options.empty()) {
-                for (const auto& d : active.directions) {
-                    options.push_back(utils::Json(utils::Json::Object{
-                        {"id", d.id},
-                        {"label", d.label},
-                        {"hint", std::string("继续该方向 (depth ") + std::to_string(d.depth) + ")"},
-                    }));
-                }
             }
             const auto thinking = parsed.contains("thinking") ? parsed.at("thinking").as_string("") : "";
             if (!present_discovery_choices(active, prompt, std::move(options), thinking)) {
@@ -2316,6 +3277,7 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
             open_direction(active, humanize_user_reply(active.run.summary));
             append_stage_memory(active, "User adjustment", active.run.summary, "ask");
             active.dialogue += "research_adjust: " + active.run.summary + "\n";
+            active.stagnant_turns = 0;
             continue;
         }
 
@@ -2323,6 +3285,25 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
             const auto path = parsed.contains("path") ? parsed.at("path").as_string("") : "";
             const auto did =
                 parsed.contains("direction_id") ? parsed.at("direction_id").as_string("") : "";
+            const auto rest_key = normalize_search_key("github", "rest", path);
+            if (!path.empty() && active.seen_searches.count(rest_key)) {
+                active.stagnant_turns += 1;
+                emit(active, "plan",
+                     utils::Json(utils::Json::Object{
+                         {"note", std::string("跳过重复的 GitHub REST：") + path +
+                                      "。请换更深路径，或在证据充分时 synthesize。"},
+                         {"stage", std::string("research")},
+                     }));
+                // Stuck on repeats only: safety valve (Maximum still allows many unique digs).
+                if (active.stagnant_turns >= 8) {
+                    finalize_research(active, "");
+                    return;
+                }
+                continue;
+            }
+            if (!path.empty()) {
+                active.seen_searches.insert(rest_key);
+            }
             if (!did.empty()) {
                 deepen_direction(active, did);
             }
@@ -2333,6 +3314,7 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
             } else if (parsed.contains("nodes")) {
                 apply_knowledge_ops(active, parsed);
             }
+            active.stagnant_turns = 0;
             continue;
         }
 
@@ -2370,11 +3352,46 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
             }
             // Already have REST facts — don't burn turns re-searching the locked Chinese label.
             if (active.prefer_github && has_github_repo_evidence(active.memory) &&
-                (q == active.clarified_query || q.find(active.clarified_query) != std::string::npos ||
-                 active.research_ai_turns >= 3)) {
+                (q == active.clarified_query || q.find(active.clarified_query) != std::string::npos) &&
+                !active.budget.ignore_cost) {
                 finalize_research(active, "");
                 return;
             }
+            // At Maximum with GitHub facts: still allow deeper unique digs, but not the same label search.
+            if (active.prefer_github && has_github_repo_evidence(active.memory) &&
+                (q == active.clarified_query || q.find(active.clarified_query) != std::string::npos)) {
+                emit(active, "plan",
+                     utils::Json(utils::Json::Object{
+                         {"note", std::string("已有仓库证据，跳过重复关键词检索。请 github_rest/"
+                                              "code 深挖或 synthesize。")},
+                         {"stage", std::string("research")},
+                     }));
+                active.stagnant_turns += 1;
+                if (active.stagnant_turns >= 8) {
+                    finalize_research(active, "");
+                    return;
+                }
+                continue;
+            }
+
+            const auto search_key = normalize_search_key(mid, ep, q);
+            if (active.seen_searches.count(search_key)) {
+                active.stagnant_turns += 1;
+                emit(active, "plan",
+                     utils::Json(utils::Json::Object{
+                         {"note", std::string("跳过重复检索：") + mid + "/" + ep + " · " + q +
+                                      "。请换更深/不同的查询，或在证据充分时 synthesize。"},
+                         {"stage", std::string("research")},
+                     }));
+                if (active.stagnant_turns >= 8 ||
+                    (!active.budget.ignore_cost && active.stagnant_turns >= 3)) {
+                    finalize_research(active, "");
+                    return;
+                }
+                continue;
+            }
+            active.seen_searches.insert(search_key);
+
             const auto did =
                 parsed.contains("direction_id") ? parsed.at("direction_id").as_string("") : "";
             if (!did.empty()) {
@@ -2383,9 +3400,11 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
                 deepen_direction(active, active.directions.front().id);
             }
             try {
-                run_search_round(active, mid, ep, q, "research");
+                run_search_round(active, mid, ep, q, "research", &parsed);
                 append_stage_memory(active, "Search " + mid + "/" + ep, q, "evidence_ref", did);
+                active.stagnant_turns = 0;
             } catch (...) {
+                active.stagnant_turns += 1;
             }
             if (parsed.contains("nodes") ||
                 (parsed.contains("knowledge") && parsed.at("knowledge").is_object())) {
@@ -2401,6 +3420,7 @@ void ResearchOrchestrator::run_deep_research(ActiveRun& active) {
                 break;
             }
         }
+        // Only auto-stop when depth is capped and every direction is exhausted.
         if (!any_open && active.budget.max_depth_layers >= 0 && !active.directions.empty()) {
             finalize_research(active, "");
             return;

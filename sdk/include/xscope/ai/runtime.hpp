@@ -58,7 +58,8 @@ private:
     Resolved resolve(const std::string& model_id, bool require_secret) const;
     utils::Json make_phase_doc(const ChatRequest& request, const std::string& phase,
                                const std::string& assistant_content, const ChatDelta& delta,
-                               const std::string& error = {}) const;
+                               const std::string& error = {},
+                               const std::string& assistant_reasoning = {}) const;
 
     network::HttpClient& http_;
     ProviderRegistry& registry_;

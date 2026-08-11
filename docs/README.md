@@ -30,3 +30,7 @@ English is the primary language. Each topic has a paired `*.zh-CN.md` file.
 ### Client
 
 - [Windows client](client/windows.md)
+
+### Packaging
+
+- [Windows MSI](packaging/windows.md)

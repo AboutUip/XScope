@@ -19,6 +19,24 @@
             <converters:InvertBooleanToVisibilityConverter x:Key="InvertBooleanToVisibilityConverter" />
             <converters:InvertBooleanToVisibilityConverter x:Key="XScopeInvertBoolToVis" />
 
+            <!-- Semantic theme brushes (ThemeService replaces these at runtime). -->
+            <SolidColorBrush x:Key="XScopeWindowBg" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="XScopeSurface" Color="#F8F9FA" />
+            <SolidColorBrush x:Key="XScopeSurfaceAlt" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="XScopeInputBg" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="XScopeHover" Color="#F1F3F4" />
+            <SolidColorBrush x:Key="XScopeBorder" Color="#E8EAED" />
+            <SolidColorBrush x:Key="XScopeTextPrimary" Color="#202124" />
+            <SolidColorBrush x:Key="XScopeTextSecondary" Color="#5F6368" />
+            <SolidColorBrush x:Key="XScopeTextMuted" Color="#9AA0A6" />
+            <SolidColorBrush x:Key="XScopeAccent" Color="#1A73E8" />
+            <SolidColorBrush x:Key="XScopeAccentSoft" Color="#E8F0FE" />
+            <SolidColorBrush x:Key="XScopeAccentText" Color="#1967D2" />
+
+            <!-- Replace the system focus visual (dashed rectangle). MD TargetType styles ignore
+                 FrameworkElement setters; emptying this key removes dashes app-wide. -->
+            <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}" />
+
             <!-- Splash brand tokens: fog field + ink scope -->
             <SolidColorBrush x:Key="SplashBgBrush" Color="#EEF4F7" />
             <SolidColorBrush x:Key="SplashInkBrush" Color="#0F2E3A" />
@@ -26,14 +44,103 @@
                 <Setter Property="FontFamily" Value="Bahnschrift, Segoe UI" />
                 <Setter Property="FontSize" Value="56" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Foreground" Value="{StaticResource SplashInkBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource SplashInkBrush}" />
                 <Setter Property="Padding" Value="0" />
             </Style>
             <!-- Xuan tail: match X metrics so optical alignment stays clean. -->
             <Style x:Key="SplashSmallLetterStyle" TargetType="TextBlock" BasedOn="{StaticResource SplashLetterStyle}">
                 <Setter Property="FontSize" Value="56" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Foreground" Value="{StaticResource SplashInkBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource SplashInkBrush}" />
+            </Style>
+
+            <!-- Thin, low-contrast scrollbars (global). -->
+            <SolidColorBrush x:Key="XScopeScrollThumb" Color="#C5CAD1" />
+            <SolidColorBrush x:Key="XScopeScrollThumbHover" Color="#9AA0A6" />
+            <SolidColorBrush x:Key="XScopeScrollTrack" Color="#00000000" />
+
+            <Style x:Key="XScopeScrollBarThumb" TargetType="Thumb">
+                <Setter Property="OverridesDefaultStyle" Value="True" />
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Thumb">
+                            <Border x:Name="Bd"
+                                    Background="{DynamicResource XScopeScrollThumb}"
+                                    CornerRadius="4"
+                                    Margin="1" />
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeScrollThumbHover}" />
+                                </Trigger>
+                                <Trigger Property="IsDragging" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeScrollThumbHover}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="ScrollBar">
+                <Setter Property="SnapsToDevicePixels" Value="True" />
+                <Setter Property="OverridesDefaultStyle" Value="True" />
+                <Style.Triggers>
+                    <Trigger Property="Orientation" Value="Vertical">
+                        <Setter Property="Width" Value="8" />
+                        <Setter Property="MinWidth" Value="8" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ScrollBar">
+                                    <Grid Background="{DynamicResource XScopeScrollTrack}">
+                                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                            <Track.DecreaseRepeatButton>
+                                                <RepeatButton Command="ScrollBar.PageUpCommand"
+                                                              Opacity="0"
+                                                              Height="0" />
+                                            </Track.DecreaseRepeatButton>
+                                            <Track.Thumb>
+                                                <Thumb Style="{StaticResource XScopeScrollBarThumb}" />
+                                            </Track.Thumb>
+                                            <Track.IncreaseRepeatButton>
+                                                <RepeatButton Command="ScrollBar.PageDownCommand"
+                                                              Opacity="0"
+                                                              Height="0" />
+                                            </Track.IncreaseRepeatButton>
+                                        </Track>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Trigger>
+                    <Trigger Property="Orientation" Value="Horizontal">
+                        <Setter Property="Height" Value="8" />
+                        <Setter Property="MinHeight" Value="8" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ScrollBar">
+                                    <Grid Background="{DynamicResource XScopeScrollTrack}">
+                                        <Track x:Name="PART_Track" IsDirectionReversed="False">
+                                            <Track.DecreaseRepeatButton>
+                                                <RepeatButton Command="ScrollBar.PageLeftCommand"
+                                                              Opacity="0"
+                                                              Width="0" />
+                                            </Track.DecreaseRepeatButton>
+                                            <Track.Thumb>
+                                                <Thumb Style="{StaticResource XScopeScrollBarThumb}" />
+                                            </Track.Thumb>
+                                            <Track.IncreaseRepeatButton>
+                                                <RepeatButton Command="ScrollBar.PageRightCommand"
+                                                              Opacity="0"
+                                                              Width="0" />
+                                            </Track.IncreaseRepeatButton>
+                                        </Track>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Trigger>
+                </Style.Triggers>
             </Style>
         </ResourceDictionary>
     </Application.Resources>

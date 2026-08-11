@@ -44,22 +44,44 @@ void feed_sse_line(const std::string& line, const std::function<void(const ChatD
         if (choice.contains("finish_reason") && !choice.at("finish_reason").is_null()) {
             last.finish_reason = choice.at("finish_reason").as_string("");
         }
-        std::string piece;
+        // Keep reasoning and content as SEPARATE deltas. Merging them into one buffer
+        // made JSON action parse fail while the UI still showed coherent "thinking".
+        auto emit_reasoning = [&](const std::string& piece) {
+            if (piece.empty()) {
+                return;
+            }
+            last.reasoning_delta = piece;
+            last.content_delta.clear();
+            on_delta(last);
+        };
+        auto emit_content = [&](const std::string& piece) {
+            if (piece.empty()) {
+                return;
+            }
+            assistant_acc += piece;
+            last.content_delta = piece;
+            last.reasoning_delta.clear();
+            on_delta(last);
+        };
         if (choice.contains("delta") && choice.at("delta").is_object()) {
             const auto& delta = choice.at("delta");
+            if (delta.contains("reasoning_content") && !delta.at("reasoning_content").is_null()) {
+                emit_reasoning(delta.at("reasoning_content").as_string(""));
+            }
+            if (delta.contains("reasoning") && !delta.at("reasoning").is_null()) {
+                emit_reasoning(delta.at("reasoning").as_string(""));
+            }
             if (delta.contains("content") && !delta.at("content").is_null()) {
-                piece = delta.at("content").as_string("");
+                emit_content(delta.at("content").as_string(""));
             }
         } else if (choice.contains("message") && choice.at("message").is_object()) {
             const auto& msg = choice.at("message");
-            if (msg.contains("content") && !msg.at("content").is_null()) {
-                piece = msg.at("content").as_string("");
+            if (msg.contains("reasoning_content") && !msg.at("reasoning_content").is_null()) {
+                emit_reasoning(msg.at("reasoning_content").as_string(""));
             }
-        }
-        if (!piece.empty()) {
-            assistant_acc += piece;
-            last.content_delta = piece;
-            on_delta(last);
+            if (msg.contains("content") && !msg.at("content").is_null()) {
+                emit_content(msg.at("content").as_string(""));
+            }
         }
     } catch (...) {
         // Ignore malformed SSE fragments; continue stream.
@@ -111,7 +133,20 @@ std::string OpenAiCompatibleClient::build_body(const AiModel& model, const ChatR
     body.emplace("model", model.model);
     body.emplace("messages", utils::Json(std::move(messages)));
     body.emplace("stream", stream);
-    body.emplace("temperature", request.temperature);
+    // Some models (DeepSeek reasoner / o1-class) only accept temperature=1.
+    double temp = request.temperature;
+    const auto& mid = model.model;
+    auto lower = mid;
+    for (auto& c : lower) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    if (lower.find("reasoner") != std::string::npos || lower.find("o1") != std::string::npos ||
+        lower.find("o3") != std::string::npos || lower.find("r1") != std::string::npos) {
+        temp = 1.0;
+    }
+    body.emplace("temperature", temp);
     if (request.max_tokens > 0) {
         body.emplace("max_tokens", request.max_tokens);
     }

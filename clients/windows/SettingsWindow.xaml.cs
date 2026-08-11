@@ -12,6 +12,7 @@ public partial class SettingsWindow : Window
     {
         InitializeComponent();
         DataContext = _vm;
+        WindowThemeChrome.Attach(this);
         Closed += (_, _) => _vm.Dispose();
     }
 
@@ -23,7 +24,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "XScope — Settings", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, ex.Message, "XScope — Settings", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

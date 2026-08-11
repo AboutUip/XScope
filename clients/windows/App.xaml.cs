@@ -16,6 +16,7 @@ public partial class App : Application
     private void OnStartup(object sender, StartupEventArgs e)
     {
         Loc.Instance.Initialize(); // default English unless ui.json says zh-Hans
+        ThemeService.Initialize();
 
         // Splash is temporary; Finish() promotes MainWindow and restores OnMainWindowClose.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;

@@ -1,5 +1,6 @@
 #include "xscope/mcp/search_tools.hpp"
 
+#include "xscope/providers/twtapi/client.hpp"
 #include "xscope/registry/usable_module.hpp"
 #include "xscope/research/knowledge_graph.hpp"
 #include "xscope/research/memory_tree.hpp"
@@ -83,6 +84,15 @@ providers::bocha::Client SearchToolService::make_bocha() const {
     });
 }
 
+providers::twtapi::Client SearchToolService::make_twtapi() const {
+    return providers::twtapi::Client(http_, [this]() {
+        if (!get_secret_) {
+            return std::optional<std::string>{};
+        }
+        return get_secret_("twtapi.default");
+    });
+}
+
 providers::github::ResponseJsonOptions SearchToolService::enrich_opts(const utils::Json& args) const {
     providers::github::ResponseJsonOptions opts;
     opts.decode_base64_content =
@@ -112,6 +122,20 @@ bool SearchToolService::require_bocha_key(ToolResponse& resp) const {
     return true;
 }
 
+bool SearchToolService::require_twtapi_key(ToolResponse& resp) const {
+    if (!get_secret_) {
+        resp.error = "TwtAPI secret lookup is not configured";
+        return false;
+    }
+    auto key = get_secret_("twtapi.default");
+    if (!key || key->empty()) {
+        resp.error = "TwtAPI API key missing; store secret twtapi.default via settings or "
+                     "xscope_search_module_set_api_key (https://www.twtapi.com)";
+        return false;
+    }
+    return true;
+}
+
 std::vector<ToolDescriptor> SearchToolService::descriptors() const {
     utils::Json::Object skill_props;
     skill_props.emplace("module_id", utils::Json::parse(R"({"type":"string"})"));
@@ -132,14 +156,14 @@ std::vector<ToolDescriptor> SearchToolService::descriptors() const {
     utils::Json::Object run_props;
     run_props.emplace(
         "module_id",
-        utils::Json::parse(R"JS({"type":"string","description":"github | bocha"})JS"));
+        utils::Json::parse(R"JS({"type":"string","description":"github | bocha | twtapi"})JS"));
     run_props.emplace(
         "endpoint",
         utils::Json::parse(
-            R"JS({"type":"string","description":"github: repositories|code|issues|commits|users|topics|labels ; bocha: web-search|ai-search"})JS"));
+            R"JS({"type":"string","description":"github: repositories|code|issues|… ; bocha: web-search|ai-search ; twtapi: Search|UserTweets|UserByScreenName|TweetDetail|Trends|status|…"})JS"));
     run_props.emplace(
-        "q", utils::Json::parse(R"JS({"type":"string","description":"Search query; Bocha also accepts query"})JS"));
-    run_props.emplace("query", utils::Json::parse(R"JS({"type":"string","description":"Bocha query alias of q"})JS"));
+        "q", utils::Json::parse(R"JS({"type":"string","description":"Search query; Bocha/TwtAPI also accept query"})JS"));
+    run_props.emplace("query", utils::Json::parse(R"JS({"type":"string","description":"Bocha/TwtAPI query alias of q"})JS"));
     run_props.emplace("sort", utils::Json::parse(R"JS({"type":"string"})JS"));
     run_props.emplace("order", utils::Json::parse(R"JS({"type":"string"})JS"));
     run_props.emplace("page", utils::Json::parse(R"JS({"type":"integer"})JS"));
@@ -149,10 +173,24 @@ std::vector<ToolDescriptor> SearchToolService::descriptors() const {
                       utils::Json::parse(R"JS({"type":"string","description":"issues only: semantic|hybrid"})JS"));
     run_props.emplace("advanced_search", utils::Json::parse(R"JS({"type":"string"})JS"));
     run_props.emplace("freshness", utils::Json::parse(R"JS({"type":"string","description":"Bocha freshness filter"})JS"));
-    run_props.emplace("count", utils::Json::parse(R"JS({"type":"integer","description":"Bocha result count 1-50"})JS"));
+    run_props.emplace("count", utils::Json::parse(R"JS({"type":"integer","description":"Result count (Bocha/TwtAPI)"})JS"));
     run_props.emplace("summary", utils::Json::parse(R"JS({"type":"boolean","description":"Bocha web-search summaries"})JS"));
     run_props.emplace("answer", utils::Json::parse(R"JS({"type":"boolean","description":"Bocha ai-search LLM answer"})JS"));
     run_props.emplace("stream", utils::Json::parse(R"JS({"type":"boolean","description":"Bocha ai-search streaming"})JS"));
+    run_props.emplace("type", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI Search type: Top|Latest|User|Image|Video"})JS"));
+    run_props.emplace("username", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI screen name without @"})JS"));
+    run_props.emplace("screen_name", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI screen_name alias"})JS"));
+    run_props.emplace("user_id", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI numeric user Rest ID"})JS"));
+    run_props.emplace("tweet_id", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI tweet Rest ID"})JS"));
+    run_props.emplace("tweet_ids", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI comma-separated tweet IDs"})JS"));
+    run_props.emplace("list_id", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI list id"})JS"));
+    run_props.emplace("community_id", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI community id"})JS"));
+    run_props.emplace("cursor", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI pagination cursor"})JS"));
+    run_props.emplace("woeid", utils::Json::parse(R"JS({"type":"integer","description":"TwtAPI Trends region WOEID"})JS"));
+    run_props.emplace("language", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI translate language"})JS"));
+    run_props.emplace("stringify_ids", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI FollowersIds/FollowingIds"})JS"));
+    run_props.emplace("safe_search", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI safe_search"})JS"));
+    run_props.emplace("time_filter", utils::Json::parse(R"JS({"type":"string","description":"TwtAPI CommunityTimeline time_filter"})JS"));
 
     utils::Json::Object rest_props;
     rest_props.emplace("method", utils::Json::parse(R"({"type":"string","description":"get|head|post|put|patch|delete"})"));
@@ -209,8 +247,9 @@ std::vector<ToolDescriptor> SearchToolService::descriptors() const {
         ToolDescriptor{kGithubOAuthSetPat, "Fallback: store a GitHub PAT/token as github.oauth.",
                        utils::Json(object_schema(std::move(pat_props), utils::Json::Array{std::string("token")}))},
         ToolDescriptor{kRunSearch,
-                       "Run a search module: GitHub REST search (module_id=github) or Bocha web/ai-search "
-                       "(module_id=bocha). COMPLETE response body, no truncation.",
+                       "Run a search module: GitHub REST search (module_id=github), Bocha web/ai-search "
+                       "(module_id=bocha), or TwtAPI Twitter/X (module_id=twtapi). COMPLETE response body, "
+                       "no truncation.",
                        utils::Json(object_schema(std::move(run_props),
                                                  utils::Json::Array{std::string("module_id"),
                                                                     std::string("endpoint")},
@@ -232,20 +271,40 @@ std::vector<ToolDescriptor> SearchToolService::descriptors() const {
                        "Catalog of named GitHub REST resources supported by github_resource.",
                        utils::Json(object_schema({}, {}, false))},
         ToolDescriptor{kKnowledgeGraphGet,
-                       "View the current project knowledge association graph (nodes + edges).",
+                       "View the current project knowledge association graph (nodes + edges). "
+                       "Optional id/node_id returns a single node instead of the full graph.",
                        utils::Json(object_schema(
                            utils::Json::Object{
                                {"project_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"id", utils::Json::parse(R"({"type":"string","description":"Optional single node id"})")},
+                               {"node_id", utils::Json::parse(R"({"type":"string","description":"Alias of id"})")},
+                           },
+                           utils::Json::Array{std::string("project_id")}))},
+        ToolDescriptor{kKnowledgeGraphGetNode,
+                       "Load one knowledge node by id (title/content/summary/weight/kind/...).",
+                       utils::Json(object_schema(
+                           utils::Json::Object{
+                               {"project_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"id", utils::Json::parse(R"({"type":"string"})")},
+                               {"node_id", utils::Json::parse(R"({"type":"string"})")},
                            },
                            utils::Json::Array{std::string("project_id")}))},
         ToolDescriptor{kKnowledgeGraphAdd,
-                       "Add a knowledge node. Only call when the knowledge is valid (model-judged).",
+                       "Add a knowledge node with AI summary + weight (0-1). Only when knowledge is valid.",
                        utils::Json(object_schema(
                            utils::Json::Object{
                                {"project_id", utils::Json::parse(R"({"type":"string"})")},
                                {"id", utils::Json::parse(R"({"type":"string"})")},
                                {"title", utils::Json::parse(R"({"type":"string"})")},
-                               {"content", utils::Json::parse(R"({"type":"string"})")},
+                               {"content",
+                                utils::Json::parse(
+                                    R"JS({"type":"string","description":"Full body / evidence text"})JS")},
+                               {"summary",
+                                utils::Json::parse(
+                                    R"JS({"type":"string","description":"AI-authored short synthesis of this knowledge (required for quality writes)"})JS")},
+                               {"weight",
+                                utils::Json::parse(
+                                    R"JS({"type":"number","description":"Importance 0-1 for UI size/color; 1=core finding"})JS")},
                                {"kind", utils::Json::parse(R"({"type":"string"})")},
                                {"direction_id", utils::Json::parse(R"({"type":"string"})")},
                                {"depth_layer", utils::Json::parse(R"({"type":"integer"})")},
@@ -255,40 +314,65 @@ std::vector<ToolDescriptor> SearchToolService::descriptors() const {
                            },
                            utils::Json::Array{std::string("project_id"), std::string("title")}, true))},
         ToolDescriptor{kKnowledgeGraphUpdate,
-                       "Update an existing knowledge node in the project graph.",
+                       "Patch an existing knowledge node. Pass only fields to change "
+                       "(title/content/summary/weight/kind/direction_id/depth_layer/valid/meta_json).",
                        utils::Json(object_schema(
                            utils::Json::Object{
                                {"project_id", utils::Json::parse(R"({"type":"string"})")},
                                {"id", utils::Json::parse(R"({"type":"string"})")},
+                               {"node_id", utils::Json::parse(R"({"type":"string","description":"Alias of id"})")},
                                {"title", utils::Json::parse(R"({"type":"string"})")},
                                {"content", utils::Json::parse(R"({"type":"string"})")},
+                               {"summary", utils::Json::parse(R"({"type":"string"})")},
+                               {"weight", utils::Json::parse(R"JS({"type":"number","description":"Importance 0-1"})JS")},
                                {"kind", utils::Json::parse(R"({"type":"string"})")},
+                               {"direction_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"depth_layer", utils::Json::parse(R"({"type":"integer"})")},
                                {"valid", utils::Json::parse(R"({"type":"boolean"})")},
+                               {"run_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"meta_json", utils::Json::parse(R"({"type":"string"})")},
                            },
-                           utils::Json::Array{std::string("project_id"), std::string("id")}, true))},
+                           utils::Json::Array{std::string("project_id")}, true))},
         ToolDescriptor{kKnowledgeGraphDelete,
                        "Delete a knowledge node (and incident edges) or an edge by id.",
                        utils::Json(object_schema(
                            utils::Json::Object{
                                {"project_id", utils::Json::parse(R"({"type":"string"})")},
                                {"node_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"id", utils::Json::parse(R"({"type":"string","description":"Alias of node_id"})")},
                                {"edge_id", utils::Json::parse(R"({"type":"string"})")},
                            },
                            utils::Json::Array{std::string("project_id")}))},
         ToolDescriptor{kKnowledgeGraphLink,
-                       "Create an association edge between two knowledge nodes.",
+                       "Create or upsert an association edge between two knowledge nodes. "
+                       "Reuse id to update relation. Accepts from/to aliases.",
                        utils::Json(object_schema(
                            utils::Json::Object{
                                {"project_id", utils::Json::parse(R"({"type":"string"})")},
                                {"from_id", utils::Json::parse(R"({"type":"string"})")},
                                {"to_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"from", utils::Json::parse(R"({"type":"string","description":"Alias of from_id"})")},
+                               {"to", utils::Json::parse(R"({"type":"string","description":"Alias of to_id"})")},
                                {"relation", utils::Json::parse(R"({"type":"string"})")},
                                {"id", utils::Json::parse(R"({"type":"string"})")},
+                               {"meta_json", utils::Json::parse(R"({"type":"string"})")},
                            },
-                           utils::Json::Array{std::string("project_id"), std::string("from_id"),
-                                             std::string("to_id")}))},
+                           utils::Json::Array{std::string("project_id")}, true))},
+        ToolDescriptor{kKnowledgeGraphUnlink,
+                       "Remove an edge by edge_id, or by from_id+to_id (+ optional relation).",
+                       utils::Json(object_schema(
+                           utils::Json::Object{
+                               {"project_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"edge_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"from_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"to_id", utils::Json::parse(R"({"type":"string"})")},
+                               {"from", utils::Json::parse(R"({"type":"string"})")},
+                               {"to", utils::Json::parse(R"({"type":"string"})")},
+                               {"relation", utils::Json::parse(R"({"type":"string"})")},
+                           },
+                           utils::Json::Array{std::string("project_id")}))},
         ToolDescriptor{kKnowledgeGraphCatalog,
-                       "Knowledge association TABLE DIRECTORY (ids/titles/relations only, no bodies).",
+                       "Knowledge association TABLE DIRECTORY (ids/titles/summary/weight/relations only, no bodies).",
                        utils::Json(object_schema(
                            utils::Json::Object{
                                {"project_id", utils::Json::parse(R"({"type":"string"})")},
@@ -395,7 +479,10 @@ ToolResponse SearchToolService::run_search(const utils::Json& args) {
     if (module_id == "bocha") {
         return run_bocha_search(args);
     }
-    resp.error = "run_search supports module_id=github|bocha (got: " + module_id + ")";
+    if (module_id == "twtapi" || module_id == "twitter" || module_id == "x") {
+        return run_twtapi_search(args);
+    }
+    resp.error = "run_search supports module_id=github|bocha|twtapi (got: " + module_id + ")";
     return resp;
 }
 
@@ -501,6 +588,140 @@ ToolResponse SearchToolService::run_bocha_search(const utils::Json& args) {
         resp.result = utils::Json(std::move(out));
         if (!resp.ok) {
             resp.error = "Bocha search HTTP " + std::to_string(http_resp.status);
+        }
+    } catch (const std::exception& ex) {
+        resp.error = ex.what();
+    }
+    return resp;
+}
+
+ToolResponse SearchToolService::run_twtapi_search(const utils::Json& args) {
+    ToolResponse resp;
+    require_usable("twtapi");
+    if (!require_twtapi_key(resp)) {
+        return resp;
+    }
+
+    std::string endpoint = args.contains("endpoint") ? args.at("endpoint").as_string("Search") : "Search";
+    endpoint = providers::twtapi::Client::normalize_endpoint(endpoint);
+
+    auto add_str = [&](std::vector<std::pair<std::string, std::string>>* query, const char* key,
+                       const char* alt = nullptr) {
+        std::string v;
+        if (args.contains(key)) {
+            const auto& j = args.at(key);
+            if (j.is_string()) {
+                v = j.as_string("");
+            } else if (j.is_number()) {
+                v = std::to_string(j.as_int64(0));
+            } else if (j.is_bool()) {
+                v = j.as_bool(false) ? "true" : "false";
+            }
+        } else if (alt && args.contains(alt)) {
+            const auto& j = args.at(alt);
+            if (j.is_string()) {
+                v = j.as_string("");
+            } else if (j.is_number()) {
+                v = std::to_string(j.as_int64(0));
+            }
+        }
+        if (!v.empty()) {
+            query->emplace_back(key, std::move(v));
+        }
+    };
+
+    std::vector<std::pair<std::string, std::string>> query;
+    // Search / list / community keyword.
+    {
+        std::string q = args.contains("q") ? args.at("q").as_string("") : "";
+        if (q.empty() && args.contains("query")) {
+            q = args.at("query").as_string("");
+        }
+        if (!q.empty()) {
+            query.emplace_back("q", q);
+        }
+    }
+    add_str(&query, "type");
+    add_str(&query, "count");
+    add_str(&query, "username", "screen_name");
+    if (args.contains("screen_name") && !args.contains("username")) {
+        // TwtAPI UserByScreenName uses `username` param name.
+        const auto sn = args.at("screen_name").as_string("");
+        if (!sn.empty()) {
+            query.emplace_back("username", sn);
+        }
+    }
+    add_str(&query, "user_id");
+    add_str(&query, "tweet_id");
+    add_str(&query, "tweet_ids");
+    add_str(&query, "list_id");
+    add_str(&query, "community_id");
+    add_str(&query, "cursor");
+    add_str(&query, "woeid");
+    add_str(&query, "language");
+    add_str(&query, "stringify_ids");
+    add_str(&query, "safe_search");
+    add_str(&query, "time_filter");
+
+    // Defaults for tweet Search when only q is provided.
+    if (endpoint == "Search") {
+        bool has_type = false;
+        bool has_count = false;
+        bool has_q = false;
+        for (const auto& p : query) {
+            if (p.first == "type") {
+                has_type = true;
+            }
+            if (p.first == "count") {
+                has_count = true;
+            }
+            if (p.first == "q") {
+                has_q = true;
+            }
+        }
+        if (!has_q && endpoint == "Search" && !providers::twtapi::Client::is_status_endpoint(endpoint)) {
+            resp.error = "twtapi Search requires q or query";
+            return resp;
+        }
+        if (!has_type) {
+            query.emplace_back("type", "Latest");
+        }
+        if (!has_count) {
+            query.emplace_back("count", "20");
+        }
+    }
+
+    try {
+        auto client = make_twtapi();
+        auto http_resp = client.get(endpoint, query);
+        utils::Json::Object out;
+        out.emplace("module_id", std::string("twtapi"));
+        out.emplace("endpoint", endpoint);
+        utils::Json::Object qobj;
+        for (const auto& p : query) {
+            qobj.emplace(p.first, p.second);
+        }
+        out.emplace("query", utils::Json(std::move(qobj)));
+        out.emplace("response", providers::twtapi::Client::response_to_json(http_resp));
+
+        bool biz_ok = http_resp.status >= 200 && http_resp.status < 300;
+        try {
+            auto parsed = utils::Json::parse(http_resp.body);
+            if (parsed.is_object() && parsed.contains("code")) {
+                const auto code = parsed.at("code").as_int64(0);
+                biz_ok = biz_ok && code == 200;
+                if (!biz_ok && parsed.contains("msg")) {
+                    resp.error = "TwtAPI code=" + std::to_string(code) + " " +
+                                 parsed.at("msg").as_string("");
+                }
+            }
+        } catch (...) {
+        }
+
+        resp.ok = biz_ok;
+        resp.result = utils::Json(std::move(out));
+        if (!resp.ok && resp.error.empty()) {
+            resp.error = "TwtAPI HTTP " + std::to_string(http_resp.status);
         }
     } catch (const std::exception& ex) {
         resp.error = ex.what();
@@ -689,6 +910,38 @@ std::string kg_make_id(const char* prefix) {
     return oss.str();
 }
 
+std::string kg_pick_string(const utils::Json& args, std::initializer_list<const char*> keys) {
+    for (const char* k : keys) {
+        if (args.contains(k)) {
+            auto v = args.at(k).as_string("");
+            if (!v.empty()) {
+                return v;
+            }
+        }
+    }
+    return {};
+}
+
+utils::Json kg_node_json(const research::KnowledgeNode& n) {
+    const double weight = n.weight < 0.0 ? 0.5 : (n.weight > 1.0 ? 1.0 : n.weight);
+    return utils::Json(utils::Json::Object{
+        {"id", n.id},
+        {"project_id", n.project_id},
+        {"run_id", n.run_id},
+        {"title", n.title},
+        {"content", n.content},
+        {"summary", n.summary},
+        {"weight", weight},
+        {"kind", n.kind},
+        {"direction_id", n.direction_id},
+        {"depth_layer", static_cast<std::int64_t>(n.depth_layer)},
+        {"valid", n.valid},
+        {"meta_json", n.meta_json},
+        {"created_at", n.created_at},
+        {"updated_at", n.updated_at},
+    });
+}
+
 } // namespace
 
 ToolResponse SearchToolService::knowledge_graph_get(const utils::Json& args) {
@@ -698,11 +951,49 @@ ToolResponse SearchToolService::knowledge_graph_get(const utils::Json& args) {
         return resp;
     }
     const auto project_id = args.at("project_id").as_string("");
+    const auto node_id = kg_pick_string(args, {"id", "node_id"});
     auto db = open_project_db_(project_id);
     research::KnowledgeGraphStore kg;
     kg.open(db);
-    resp.ok = true;
-    resp.result = kg.graph_json(project_id);
+    if (!node_id.empty()) {
+        auto node = kg.get_node(project_id, node_id);
+        if (!node) {
+            resp.error = "node not found";
+        } else {
+            resp.ok = true;
+            resp.result = kg_node_json(*node);
+        }
+    } else {
+        resp.ok = true;
+        resp.result = kg.graph_json(project_id);
+    }
+    kg.close();
+    db.close();
+    return resp;
+}
+
+ToolResponse SearchToolService::knowledge_graph_get_node(const utils::Json& args) {
+    ToolResponse resp;
+    if (!open_project_db_) {
+        resp.error = "knowledge graph unavailable (no project db opener)";
+        return resp;
+    }
+    const auto project_id = args.at("project_id").as_string("");
+    const auto node_id = kg_pick_string(args, {"id", "node_id"});
+    if (node_id.empty()) {
+        resp.error = "id or node_id is required";
+        return resp;
+    }
+    auto db = open_project_db_(project_id);
+    research::KnowledgeGraphStore kg;
+    kg.open(db);
+    auto node = kg.get_node(project_id, node_id);
+    if (!node) {
+        resp.error = "node not found";
+    } else {
+        resp.ok = true;
+        resp.result = kg_node_json(*node);
+    }
     kg.close();
     db.close();
     return resp;
@@ -733,6 +1024,11 @@ ToolResponse SearchToolService::knowledge_graph_add(const utils::Json& args) {
     node.run_id = args.contains("run_id") ? args.at("run_id").as_string("") : "";
     node.title = args.at("title").as_string("");
     node.content = args.contains("content") ? args.at("content").as_string("") : "";
+    node.summary = args.contains("summary") ? args.at("summary").as_string("") : "";
+    if (node.summary.empty() && !node.content.empty()) {
+        node.summary = node.content.substr(0, std::min<std::size_t>(node.content.size(), 240));
+    }
+    node.weight = args.contains("weight") ? args.at("weight").as_number(0.5) : 0.5;
     node.kind = args.contains("kind") ? args.at("kind").as_string("fact") : "fact";
     node.direction_id = args.contains("direction_id") ? args.at("direction_id").as_string("") : "";
     node.depth_layer =
@@ -748,6 +1044,7 @@ ToolResponse SearchToolService::knowledge_graph_add(const utils::Json& args) {
     resp.result = utils::Json(utils::Json::Object{
         {"id", node.id},
         {"uploaded", true},
+        {"node", kg_node_json(node)},
     });
     kg.close();
     db.close();
@@ -762,10 +1059,16 @@ ToolResponse SearchToolService::knowledge_graph_update(const utils::Json& args) 
     }
     const auto project_id = args.at("project_id").as_string("");
     research::KnowledgeNode node;
-    node.id = args.at("id").as_string("");
+    node.id = kg_pick_string(args, {"id", "node_id"});
+    if (node.id.empty()) {
+        resp.error = "id or node_id is required";
+        return resp;
+    }
     node.project_id = project_id;
     node.title = args.contains("title") ? args.at("title").as_string("") : "";
     node.content = args.contains("content") ? args.at("content").as_string("") : "";
+    node.summary = args.contains("summary") ? args.at("summary").as_string("") : "";
+    node.weight = args.contains("weight") ? args.at("weight").as_number(-1.0) : -1.0;
     node.kind = args.contains("kind") ? args.at("kind").as_string("") : "";
     node.valid = !args.contains("valid") || args.at("valid").as_bool(true);
     node.direction_id = args.contains("direction_id") ? args.at("direction_id").as_string("") : "";
@@ -782,7 +1085,12 @@ ToolResponse SearchToolService::knowledge_graph_update(const utils::Json& args) 
     if (!ok) {
         resp.error = "node not found";
     } else {
-        resp.result = utils::Json(utils::Json::Object{{"id", node.id}, {"updated", true}});
+        auto updated = kg.get_node(project_id, node.id);
+        resp.result = utils::Json(utils::Json::Object{
+            {"id", node.id},
+            {"updated", true},
+            {"node", updated ? kg_node_json(*updated) : utils::Json(utils::Json::Object{})},
+        });
     }
     kg.close();
     db.close();
@@ -832,9 +1140,14 @@ ToolResponse SearchToolService::knowledge_graph_link(const utils::Json& args) {
         edge.id = kg_make_id("ke_");
     }
     edge.project_id = project_id;
-    edge.from_id = args.at("from_id").as_string("");
-    edge.to_id = args.at("to_id").as_string("");
-    edge.relation = args.contains("relation") ? args.at("relation").as_string("related") : "related";
+    edge.from_id = kg_pick_string(args, {"from_id", "from", "source_id", "source", "src"});
+    edge.to_id = kg_pick_string(args, {"to_id", "to", "target_id", "target", "dst"});
+    if (edge.from_id.empty() || edge.to_id.empty()) {
+        resp.error = "from_id and to_id are required (aliases from/to accepted)";
+        return resp;
+    }
+    edge.relation = args.contains("relation") ? args.at("relation").as_string("related")
+                    : (args.contains("type") ? args.at("type").as_string("related") : "related");
     edge.meta_json = args.contains("meta_json") ? args.at("meta_json").as_string("") : "";
 
     auto db = open_project_db_(project_id);
@@ -842,7 +1155,51 @@ ToolResponse SearchToolService::knowledge_graph_link(const utils::Json& args) {
     kg.open(db);
     kg.upsert_edge(edge);
     resp.ok = true;
-    resp.result = utils::Json(utils::Json::Object{{"id", edge.id}, {"linked", true}});
+    resp.result = utils::Json(utils::Json::Object{
+        {"id", edge.id},
+        {"linked", true},
+        {"from_id", edge.from_id},
+        {"to_id", edge.to_id},
+        {"relation", edge.relation},
+    });
+    kg.close();
+    db.close();
+    return resp;
+}
+
+ToolResponse SearchToolService::knowledge_graph_unlink(const utils::Json& args) {
+    ToolResponse resp;
+    if (!open_project_db_) {
+        resp.error = "knowledge graph unavailable (no project db opener)";
+        return resp;
+    }
+    const auto project_id = args.at("project_id").as_string("");
+    auto db = open_project_db_(project_id);
+    research::KnowledgeGraphStore kg;
+    kg.open(db);
+    if (args.contains("edge_id") && !args.at("edge_id").as_string("").empty()) {
+        const auto edge_id = args.at("edge_id").as_string("");
+        kg.delete_edge(project_id, edge_id);
+        resp.ok = true;
+        resp.result = utils::Json(utils::Json::Object{{"deleted_edge", edge_id}, {"deleted", 1}});
+    } else {
+        const auto from_id = kg_pick_string(args, {"from_id", "from", "source_id", "source"});
+        const auto to_id = kg_pick_string(args, {"to_id", "to", "target_id", "target"});
+        if (from_id.empty() || to_id.empty()) {
+            resp.error = "edge_id or from_id+to_id required";
+            kg.close();
+            db.close();
+            return resp;
+        }
+        const auto relation = args.contains("relation") ? args.at("relation").as_string("") : "";
+        const int n = kg.delete_edges_between(project_id, from_id, to_id, relation);
+        resp.ok = true;
+        resp.result = utils::Json(utils::Json::Object{
+            {"from_id", from_id},
+            {"to_id", to_id},
+            {"deleted", static_cast<std::int64_t>(n)},
+        });
+    }
     kg.close();
     db.close();
     return resp;
@@ -1182,6 +1539,13 @@ ToolResponse SearchToolService::call(const ToolRequest& request) {
             }
             return knowledge_graph_get(request.arguments);
         }
+        if (request.name == kKnowledgeGraphGetNode) {
+            if (!request.arguments.is_object() || !request.arguments.contains("project_id")) {
+                resp.error = "project_id is required";
+                return resp;
+            }
+            return knowledge_graph_get_node(request.arguments);
+        }
         if (request.name == kKnowledgeGraphAdd) {
             if (!request.arguments.is_object() || !request.arguments.contains("project_id")) {
                 resp.error = "project_id is required";
@@ -1190,9 +1554,8 @@ ToolResponse SearchToolService::call(const ToolRequest& request) {
             return knowledge_graph_add(request.arguments);
         }
         if (request.name == kKnowledgeGraphUpdate) {
-            if (!request.arguments.is_object() || !request.arguments.contains("project_id") ||
-                !request.arguments.contains("id")) {
-                resp.error = "project_id and id are required";
+            if (!request.arguments.is_object() || !request.arguments.contains("project_id")) {
+                resp.error = "project_id is required";
                 return resp;
             }
             return knowledge_graph_update(request.arguments);
@@ -1205,12 +1568,18 @@ ToolResponse SearchToolService::call(const ToolRequest& request) {
             return knowledge_graph_delete(request.arguments);
         }
         if (request.name == kKnowledgeGraphLink) {
-            if (!request.arguments.is_object() || !request.arguments.contains("project_id") ||
-                !request.arguments.contains("from_id") || !request.arguments.contains("to_id")) {
-                resp.error = "project_id, from_id, and to_id are required";
+            if (!request.arguments.is_object() || !request.arguments.contains("project_id")) {
+                resp.error = "project_id is required";
                 return resp;
             }
             return knowledge_graph_link(request.arguments);
+        }
+        if (request.name == kKnowledgeGraphUnlink) {
+            if (!request.arguments.is_object() || !request.arguments.contains("project_id")) {
+                resp.error = "project_id is required";
+                return resp;
+            }
+            return knowledge_graph_unlink(request.arguments);
         }
         if (request.name == kKnowledgeGraphCatalog) {
             if (!request.arguments.is_object() || !request.arguments.contains("project_id")) {

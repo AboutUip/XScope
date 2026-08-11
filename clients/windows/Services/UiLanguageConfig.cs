@@ -42,6 +42,28 @@ internal static class UiLanguageConfig
         return Default;
     }
 
+    public static AppThemeMode ReadTheme()
+    {
+        try
+        {
+            if (!File.Exists(ConfigPath))
+            {
+                return AppThemeMode.Auto;
+            }
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+            if (doc.RootElement.TryGetProperty("theme", out var theme))
+            {
+                return ThemeService.Parse(theme.GetString());
+            }
+        }
+        catch
+        {
+        }
+
+        return AppThemeMode.Auto;
+    }
+
     public static string? ReadPreferredProviderId()
     {
         try
@@ -67,20 +89,31 @@ internal static class UiLanguageConfig
 
     public static void Save(AppLanguage language)
     {
-        Save(language, ReadPreferredProviderId());
+        SaveAll(language, ReadPreferredProviderId(), ReadTheme());
     }
 
     public static void SavePreferredProviderId(string? providerId)
     {
-        Save(Read(), string.IsNullOrWhiteSpace(providerId) ? null : providerId.Trim());
+        SaveAll(Read(), string.IsNullOrWhiteSpace(providerId) ? null : providerId.Trim(), ReadTheme());
+    }
+
+    public static void SaveTheme(AppThemeMode theme)
+    {
+        SaveAll(Read(), ReadPreferredProviderId(), theme);
     }
 
     public static void Save(AppLanguage language, string? preferredProviderId)
+    {
+        SaveAll(language, preferredProviderId, ReadTheme());
+    }
+
+    private static void SaveAll(AppLanguage language, string? preferredProviderId, AppThemeMode theme)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
         var payload = new Dictionary<string, object?>
         {
             ["language"] = ToCode(language),
+            ["theme"] = ThemeService.ToCode(theme),
         };
         if (!string.IsNullOrWhiteSpace(preferredProviderId))
         {

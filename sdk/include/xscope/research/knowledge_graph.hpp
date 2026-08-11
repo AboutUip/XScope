@@ -16,6 +16,9 @@ struct KnowledgeNode {
     std::string run_id;
     std::string title;
     std::string content;
+    std::string summary; // AI-authored short synthesis (not just title/body)
+    /// Importance in [0,1]. Use <0 as "unset" for partial updates.
+    double weight = -1.0;
     std::string kind; // fact | entity | finding | code | note
     std::string direction_id;
     int depth_layer = 0;
@@ -49,6 +52,9 @@ public:
 
     void upsert_edge(const KnowledgeEdge& edge);
     bool delete_edge(const std::string& project_id, const std::string& edge_id);
+    /// Deletes edges matching endpoints; empty relation matches any. Returns count deleted.
+    int delete_edges_between(const std::string& project_id, const std::string& from_id,
+                             const std::string& to_id, const std::string& relation = "");
     std::vector<KnowledgeEdge> list_edges(const std::string& project_id);
 
     /// Full graph snapshot for MCP / prompts.

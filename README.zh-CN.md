@@ -28,8 +28,10 @@ XScope 把一个调研问题变成可引导的工作流：
 - **搜索模块** — GitHub（设备码登录 / PAT + REST）与 Bocha 网页搜索
 - **AI 提供商** — OpenAI 兼容对话（如 DeepSeek、Kimi），在设置中配置
 - **项目库** — 本地项目，支持置顶 / 重命名 / 删除
-- **知识关联图 + 阶段记忆树** — 向模型提供目录，正文按需读取
+- **知识关联图 + 阶段记忆树** — 向模型提供目录，正文按需读取；客户端三维洞察侧栏
 - **XAIOP 流式阶段** — 思考、关键词、证据、报告实时推送
+- **外观** — 自动 / 浅色 / 深色（X 风格深色铬）
+- **报告导出** — 完成后支持 Markdown / PDF / Word（客户端转换）
 
 运行时数据在 `%LocalAppData%\XScope\data`（密钥加密存放；不进 git）。
 
@@ -82,6 +84,7 @@ dotnet run -c Debug -p:Platform=x64
 ```text
 XScope/
 ├── clients/windows/     # WPF 应用（net9.0-windows，x64）
+├── packaging/windows/   # MSI 构建（WiX + 发布脚本）
 ├── sdk/                 # C++20 引擎 + C API + 依赖（sqlite、xaiop_native）
 ├── docs/                # 架构与客户端说明（中英）
 ├── README.md
@@ -107,6 +110,7 @@ XScope/
 | Skills / Registry / Utils | [skills](docs/architecture/skills.zh-CN.md) · [registry](docs/architecture/registry.zh-CN.md) · [utils](docs/architecture/utils.zh-CN.md) |
 | 并发 / 安全 | [concurrency](docs/architecture/concurrency.zh-CN.md) · [security](docs/architecture/security.zh-CN.md) |
 | Windows 客户端 | [client/windows](docs/client/windows.zh-CN.md) |
+| Windows MSI 打包 | [packaging/windows](docs/packaging/windows.zh-CN.md) |
 | SDK | [sdk/overview](docs/sdk/overview.zh-CN.md) |
 
 ## 许可

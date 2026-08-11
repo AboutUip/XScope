@@ -5,6 +5,7 @@
 #include "xscope/network/http_client.hpp"
 #include "xscope/providers/bocha/client.hpp"
 #include "xscope/providers/github/rest_client.hpp"
+#include "xscope/providers/twtapi/client.hpp"
 #include "xscope/registry/search_registry.hpp"
 #include "xscope/registry/usable_module.hpp"
 #include "xscope/skills/skill_store.hpp"
@@ -37,10 +38,12 @@ public:
     static constexpr const char* kGithubResource = "github_resource";
     static constexpr const char* kGithubRestCatalog = "github_rest_catalog";
     static constexpr const char* kKnowledgeGraphGet = "knowledge_graph_get";
+    static constexpr const char* kKnowledgeGraphGetNode = "knowledge_graph_get_node";
     static constexpr const char* kKnowledgeGraphAdd = "knowledge_graph_add";
     static constexpr const char* kKnowledgeGraphUpdate = "knowledge_graph_update";
     static constexpr const char* kKnowledgeGraphDelete = "knowledge_graph_delete";
     static constexpr const char* kKnowledgeGraphLink = "knowledge_graph_link";
+    static constexpr const char* kKnowledgeGraphUnlink = "knowledge_graph_unlink";
     static constexpr const char* kKnowledgeGraphCatalog = "knowledge_graph_catalog";
     static constexpr const char* kMemoryCatalog = "memory_catalog";
     static constexpr const char* kMemoryGet = "memory_get";
@@ -71,21 +74,26 @@ private:
     registry::UsableSearchModule require_usable(const std::string& module_id) const;
     providers::github::RestClient make_rest() const;
     providers::bocha::Client make_bocha() const;
+    providers::twtapi::Client make_twtapi() const;
     providers::github::ResponseJsonOptions enrich_opts(const utils::Json& args) const;
     bool require_github_connected(ToolResponse& resp) const;
     bool require_bocha_key(ToolResponse& resp) const;
+    bool require_twtapi_key(ToolResponse& resp) const;
 
     ToolResponse run_search(const utils::Json& args);
     ToolResponse run_github_search(const utils::Json& args);
     ToolResponse run_bocha_search(const utils::Json& args);
+    ToolResponse run_twtapi_search(const utils::Json& args);
     ToolResponse github_rest(const utils::Json& args);
     ToolResponse github_rest_paginate(const utils::Json& args);
     ToolResponse github_resource(const utils::Json& args);
     ToolResponse knowledge_graph_get(const utils::Json& args);
+    ToolResponse knowledge_graph_get_node(const utils::Json& args);
     ToolResponse knowledge_graph_add(const utils::Json& args);
     ToolResponse knowledge_graph_update(const utils::Json& args);
     ToolResponse knowledge_graph_delete(const utils::Json& args);
     ToolResponse knowledge_graph_link(const utils::Json& args);
+    ToolResponse knowledge_graph_unlink(const utils::Json& args);
     ToolResponse knowledge_graph_catalog(const utils::Json& args);
     ToolResponse memory_catalog(const utils::Json& args);
     ToolResponse memory_get(const utils::Json& args);

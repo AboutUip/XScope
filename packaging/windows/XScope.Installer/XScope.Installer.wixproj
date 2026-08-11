@@ -1,0 +1,21 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Overridden by build-msi.ps1 -->
+    <PublishDir Condition="'$(PublishDir)' == ''">..\out\publish\</PublishDir>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">0.1.0</ProductVersion>
+    <DefineConstants>ProductVersion=$(ProductVersion)</DefineConstants>
+    <OutputName>XScope-$(ProductVersion)-x64</OutputName>
+    <OutputPath>..\out\</OutputPath>
+    <IntermediateOutputPath>..\out\obj\</IntermediateOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <BindPath Include="$(PublishDir)" BindName="PublishDir" />
+    <Compile Include="Package.wxs" />
+    <None Include="License.rtf" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+  </ItemGroup>
+</Project>

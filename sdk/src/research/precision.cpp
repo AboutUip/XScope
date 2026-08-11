@@ -38,6 +38,7 @@ const char* precision_to_string(PrecisionKind k) noexcept {
 ResearchBudget budget_for(PrecisionKind kind) noexcept {
     ResearchBudget b;
     b.kind = kind;
+    b.ignore_cost = false;
     switch (kind) {
     case PrecisionKind::Quick:
         b.max_depth_layers = 3;
@@ -55,9 +56,11 @@ ResearchBudget budget_for(PrecisionKind kind) noexcept {
         b.items_per_layer = 15;
         break;
     case PrecisionKind::Maximum:
+        // Essential difference: no cost/time budget — research until accuracy is enough.
         b.max_depth_layers = -1;
-        b.max_directions = 16;
-        b.items_per_layer = 15;
+        b.max_directions = -1;
+        b.items_per_layer = 20;
+        b.ignore_cost = true;
         break;
     }
     return b;
@@ -68,19 +71,50 @@ std::string policy_prompt_text(const ResearchBudget& budget) {
     oss << "Research precision policy (ENGINE-ENFORCED):\n"
         << "- precision: " << precision_to_string(budget.kind) << "\n"
         << "- DEPTH vs BREADTH: a \"layer\" is one deeper step along ONE investigation direction. "
-           "Breadth = how many directions you open; depth = how deep each direction goes.\n";
+           "Breadth = how many directions you open; depth = how deep each direction goes. "
+           "Precision is ONE knob covering both — not two separate systems.\n";
+
+    if (budget.ignore_cost || budget.kind == PrecisionKind::Maximum) {
+        oss << "\n## MAXIMUM — essential difference from all other tiers\n"
+            << "- IGNORE cost, token spend, and wall-clock time completely.\n"
+            << "- Prioritize RESULT ACCURACY over speed.\n"
+            << "- You MAY and SHOULD keep researching indefinitely until evidence is solid enough "
+               "to write an accurate report.\n"
+            << "- Depth layers and direction count are UNLIMITED — dig deeper, open new angles, "
+               "read code/files/APIs, cross-check sources.\n"
+            << "- NEVER stop early to \"save tokens\" or because \"enough turns passed\".\n"
+            << "- NEVER repeat the same search query/module/endpoint. If a query already ran, "
+               "choose a STRICTLY deeper or different angle (new path, file, API, contradiction, "
+               "source) or synthesize.\n"
+            << "- synthesize ONLY when you can defend accuracy; until then, deepen.\n\n";
+    }
+
     if (budget.max_depth_layers < 0) {
-        oss << "- max depth layers per direction: unlimited (must be VERY thorough)\n";
+        oss << "- max depth layers per direction: unlimited\n";
     } else {
         oss << "- max depth layers per direction: " << budget.max_depth_layers << "\n";
     }
-    oss << "- soft max directions (breadth): " << budget.max_directions << "\n"
-        << "- items/detail per deepen step: " << budget.items_per_layer << "\n"
-        << "- No forced minimum depth; you may stop a direction early if evidence is enough.\n"
-        << "- If the need is GitHub-related, prefer github run_search + github_rest/code and dig into "
-           "code-level detail (files, APIs, protocols), especially at Maximum.\n"
+    if (budget.max_directions < 0) {
+        oss << "- max directions (breadth): unlimited\n";
+    } else {
+        oss << "- soft max directions (breadth): " << budget.max_directions << "\n";
+    }
+    oss << "- items/detail per deepen step: " << budget.items_per_layer << "\n";
+
+    if (!budget.ignore_cost) {
+        oss << "- Balance thoroughness against cost for this tier; stop a direction early if "
+               "evidence is already enough.\n";
+    }
+
+    oss << "- If the need is GitHub-related, prefer github run_search + github_rest/code and dig into "
+           "code-level detail (files, APIs, protocols)"
+        << (budget.ignore_cost ? " — required at Maximum.\n" : ".\n")
         << "- User clarify/choice turns do NOT consume depth layers.\n"
-        << "- Knowledge nodes: only emit valid=true knowledge for the project knowledge graph.\n"
+        << "- Knowledge graph (YOU own it — engine never auto-builds):\n"
+           "  * Emit action=knowledge with valid=true for EVERY meaningful, reusable finding "
+           "(entities, definitions, sourced claims, APIs, protocols, decisions, relationships).\n"
+           "  * Always include edges (cites/depends_on/part_of/supports/contradicts/related).\n"
+           "  * Do not leave the graph empty when evidence is solid; omit only noise/guesses.\n"
         << "- During deep research you MAY ask_user (question/choice) to verify or adjust directions.\n"
         << "\n## Stage memory (radiating tree) & catalogs (MANDATORY in deep research)\n"
         << "- Memory is a radiating tree of branches (side-paths / follow-ups), not a flat list.\n"
@@ -93,7 +127,7 @@ std::string policy_prompt_text(const ResearchBudget& budget) {
     switch (budget.kind) {
     case PrecisionKind::Quick:
         oss << "  * QUICK: only the current explicit task, or SHALLOW related memory on the current "
-               "branch. Do not roam other side-paths.\n";
+               "branch. Do not roam other side-paths. Prefer few directions and shallow layers.\n";
         break;
     case PrecisionKind::Normal:
         oss << "  * NORMAL: read related dependency memories and/or the FULL chain on the current "
@@ -104,8 +138,9 @@ std::string policy_prompt_text(const ResearchBudget& budget) {
                "(other branch) directories, and open those bodies on demand.\n";
         break;
     case PrecisionKind::Maximum:
-        oss << "  * MAXIMUM: NO read constraints. Complete the task — push reading ALL related "
-               "memories and use the knowledge graph frequently (add/link/update).\n";
+        oss << "  * MAXIMUM: NO read constraints and NO cost constraints. Push reading ALL related "
+               "memories; use the knowledge graph heavily (add/link/update). Keep deepening until "
+               "the report would be accurate.\n";
         break;
     }
     return oss.str();

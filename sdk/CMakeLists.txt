@@ -79,6 +79,8 @@ add_library(xscope_core STATIC
   src/providers/github/builtin.cpp
   src/providers/bocha/client.cpp
   src/providers/bocha/builtin.cpp
+  src/providers/twtapi/client.cpp
+  src/providers/twtapi/builtin.cpp
   src/ai/types.cpp
   src/ai/provider_registry.cpp
   src/ai/openai_compatible.cpp

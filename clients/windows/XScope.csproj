@@ -19,10 +19,14 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
+    <PackageReference Include="HelixToolkit.Wpf" Version="2.27.3" />
+    <PackageReference Include="Markdig" Version="0.41.3" />
     <PackageReference Include="MaterialDesignColors" Version="5.3.2" />
     <PackageReference Include="MaterialDesignThemes" Version="5.3.2" />
     <PackageReference Include="MdXaml" Version="1.27.0" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
+    <PackageReference Include="QuestPDF" Version="2025.7.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,12 +37,16 @@
   </ItemGroup>
 
   <!-- Skip during VS design-time builds to avoid markup-compile hangs. -->
-  <Target Name="CopyXScopeNative" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' AND '$(BuildingForLiveUnitTesting)' != 'true'">
+  <Target Name="CopyXScopeNative" AfterTargets="Build;Publish" Condition="'$(DesignTimeBuild)' != 'true' AND '$(BuildingForLiveUnitTesting)' != 'true'">
+    <PropertyGroup>
+      <_NativeOutDir Condition="'$(PublishDir)' != ''">$(PublishDir)</_NativeOutDir>
+      <_NativeOutDir Condition="'$(_NativeOutDir)' == ''">$(TargetDir)</_NativeOutDir>
+    </PropertyGroup>
     <ItemGroup>
       <_NativeDlls Include="$(XScopeSdkBuildDir)\xscope_capi.dll" Condition="Exists('$(XScopeSdkBuildDir)\xscope_capi.dll')" />
       <_NativeDlls Include="$(XScopeSdkBuildDir)\xaiop_native.dll" Condition="Exists('$(XScopeSdkBuildDir)\xaiop_native.dll')" />
     </ItemGroup>
-    <Copy SourceFiles="@(_NativeDlls)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="'@(_NativeDlls)' != ''" />
+    <Copy SourceFiles="@(_NativeDlls)" DestinationFolder="$(_NativeOutDir)" SkipUnchangedFiles="true" Condition="'@(_NativeDlls)' != ''" />
     <Warning Text="xscope_capi.dll not found under $(XScopeSdkBuildDir). Build the SDK (cmake --build) before running GitHub login." Condition="!Exists('$(XScopeSdkBuildDir)\xscope_capi.dll')" />
   </Target>
 

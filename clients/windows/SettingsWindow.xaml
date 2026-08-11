@@ -11,9 +11,9 @@
         MinWidth="780"
         WindowStartupLocation="CenterOwner"
         Icon="pack://application:,,,/Assets/xscope.ico"
-        Background="#FFFFFF"
+        Background="{DynamicResource XScopeWindowBg}"
         FontFamily="Segoe UI, Microsoft YaHei UI"
-        TextElement.Foreground="#202124"
+        TextElement.Foreground="{DynamicResource XScopeTextPrimary}"
         Loaded="OnLoaded">
     <Window.Resources>
         <Style x:Key="SettingsNavButton" TargetType="Button">
@@ -23,34 +23,47 @@
             <Setter Property="Padding" Value="16,12" />
             <Setter Property="Margin" Value="8,2" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource XScopeTextPrimary}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="24"
+                                CornerRadius="14"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#EFEFEF" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeHover}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="SettingsNavTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource XScopeTextPrimary}" />
+        </Style>
+        <Style x:Key="SettingsNavHint" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,3,0,0" />
+            <Setter Property="Foreground" Value="{DynamicResource XScopeTextSecondary}" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
         <Style x:Key="SettingsRow" TargetType="Border">
             <Setter Property="Padding" Value="0,16" />
-            <Setter Property="BorderBrush" Value="#E8EAED" />
+            <Setter Property="BorderBrush" Value="{DynamicResource XScopeBorder}" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
         </Style>
         <!-- Collapsible settings row: click PART_Header (code) to toggle. -->
         <Style TargetType="{x:Type controls:SettingsAccordionItem}">
             <Setter Property="IsExpanded" Value="False" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="#E8EAED" />
+            <Setter Property="BorderBrush" Value="{DynamicResource XScopeBorder}" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -83,7 +96,7 @@
                                                                  Width="20"
                                                                  Height="20"
                                                                  VerticalAlignment="Center"
-                                                                 Foreground="#5F6368"
+                                                                 Foreground="{DynamicResource XScopeTextSecondary}"
                                                                  Margin="4,0,4,0" />
                                     </Grid>
                                 </Border>
@@ -102,7 +115,7 @@
                                 <Setter Property="IsExpanded" Value="True" />
                             </Trigger>
                             <Trigger SourceName="PART_Header" Property="IsMouseOver" Value="True">
-                                <Setter TargetName="PART_Header" Property="Background" Value="#F8F9FA" />
+                                <Setter TargetName="PART_Header" Property="Background" Value="{DynamicResource XScopeHover}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -112,11 +125,11 @@
         <Style x:Key="SettingsExpanderHeaderTitle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="14" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="#202124" />
+            <Setter Property="Foreground" Value="{DynamicResource XScopeTextPrimary}" />
         </Style>
         <Style x:Key="SettingsExpanderHeaderHint" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="#5F6368" />
+            <Setter Property="Foreground" Value="{DynamicResource XScopeTextSecondary}" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="Margin" Value="0,4,0,0" />
         </Style>
@@ -128,14 +141,17 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Column="0" Background="#F8F9FA" BorderBrush="#E8EAED" BorderThickness="0,0,1,0">
+        <Border Grid.Column="0"
+                Background="{DynamicResource XScopeSurfaceAlt}"
+                BorderBrush="{DynamicResource XScopeBorder}"
+                BorderThickness="0,0,1,0">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top"
                            Text="{Binding L.Settings}"
                            FontSize="22"
-                           FontWeight="Normal"
+                           FontWeight="SemiBold"
                            Margin="24,24,16,20"
-                           Foreground="#202124" />
+                           Foreground="{DynamicResource XScopeTextPrimary}" />
 
                 <StackPanel Margin="8,0">
                     <Button Command="{Binding SelectSectionCommand}"
@@ -145,15 +161,14 @@
                             <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsGitHub}" Value="True">
-                                        <Setter Property="Background" Value="#E8F0FE" />
-                                        <Setter Property="Foreground" Value="#1967D2" />
+                                        <Setter Property="Background" Value="{DynamicResource XScopeAccentSoft}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
                         <StackPanel>
-                            <TextBlock Text="{Binding L.NavGitHub}" FontSize="14" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding L.NavGitHubHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                            <TextBlock Text="{Binding L.NavGitHub}" Style="{StaticResource SettingsNavTitle}" />
+                            <TextBlock Text="{Binding L.NavGitHubHint}" Style="{StaticResource SettingsNavHint}" />
                         </StackPanel>
                     </Button>
 
@@ -164,15 +179,14 @@
                             <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsSearch}" Value="True">
-                                        <Setter Property="Background" Value="#E8F0FE" />
-                                        <Setter Property="Foreground" Value="#1967D2" />
+                                        <Setter Property="Background" Value="{DynamicResource XScopeAccentSoft}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
                         <StackPanel>
-                            <TextBlock Text="{Binding L.NavSearch}" FontSize="14" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding L.NavSearchHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                            <TextBlock Text="{Binding L.NavSearch}" Style="{StaticResource SettingsNavTitle}" />
+                            <TextBlock Text="{Binding L.NavSearchHint}" Style="{StaticResource SettingsNavHint}" />
                         </StackPanel>
                     </Button>
 
@@ -183,15 +197,32 @@
                             <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsAi}" Value="True">
-                                        <Setter Property="Background" Value="#E8F0FE" />
-                                        <Setter Property="Foreground" Value="#1967D2" />
+                                        <Setter Property="Background" Value="{DynamicResource XScopeAccentSoft}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
                         <StackPanel>
-                            <TextBlock Text="{Binding L.NavAi}" FontSize="14" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding L.NavAiHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                            <TextBlock Text="{Binding L.NavAi}" Style="{StaticResource SettingsNavTitle}" />
+                            <TextBlock Text="{Binding L.NavAiHint}" Style="{StaticResource SettingsNavHint}" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding SelectSectionCommand}"
+                            CommandParameter="{x:Static vm:SettingsSection.Appearance}"
+                            Visibility="{Binding ShowNavAppearance, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAppearance}" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource XScopeAccentSoft}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel>
+                            <TextBlock Text="{Binding L.NavAppearance}" Style="{StaticResource SettingsNavTitle}" />
+                            <TextBlock Text="{Binding L.NavAppearanceHint}" Style="{StaticResource SettingsNavHint}" />
                         </StackPanel>
                     </Button>
 
@@ -202,15 +233,14 @@
                             <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsLanguage}" Value="True">
-                                        <Setter Property="Background" Value="#E8F0FE" />
-                                        <Setter Property="Foreground" Value="#1967D2" />
+                                        <Setter Property="Background" Value="{DynamicResource XScopeAccentSoft}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
                         <StackPanel>
-                            <TextBlock Text="{Binding L.NavLanguage}" FontSize="14" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding L.NavLanguageHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                            <TextBlock Text="{Binding L.NavLanguage}" Style="{StaticResource SettingsNavTitle}" />
+                            <TextBlock Text="{Binding L.NavLanguageHint}" Style="{StaticResource SettingsNavHint}" />
                         </StackPanel>
                     </Button>
 
@@ -221,22 +251,22 @@
                             <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsAbout}" Value="True">
-                                        <Setter Property="Background" Value="#E8F0FE" />
-                                        <Setter Property="Foreground" Value="#1967D2" />
+                                        <Setter Property="Background" Value="{DynamicResource XScopeAccentSoft}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
                         <StackPanel>
-                            <TextBlock Text="{Binding L.NavAbout}" FontSize="14" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding L.NavAboutHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                            <TextBlock Text="{Binding L.NavAbout}" Style="{StaticResource SettingsNavTitle}" />
+                            <TextBlock Text="{Binding L.NavAboutHint}" Style="{StaticResource SettingsNavHint}" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
 
-        <Grid Grid.Column="1" Margin="40,28,40,24">
+        <Border Grid.Column="1" Background="{DynamicResource XScopeSurface}">
+            <Grid Margin="40,28,40,24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -244,10 +274,10 @@
 
             <Border Grid.Row="0"
                     Height="44"
-                    CornerRadius="22"
-                    BorderBrush="#DFE1E5"
+                    CornerRadius="12"
+                    BorderBrush="{DynamicResource XScopeBorder}"
                     BorderThickness="1"
-                    Background="#FFFFFF"
+                    Background="{DynamicResource XScopeInputBg}"
                     Margin="0,0,0,24"
                     Padding="14,0">
                 <DockPanel>
@@ -255,7 +285,7 @@
                                              Width="18"
                                              Height="18"
                                              VerticalAlignment="Center"
-                                             Foreground="#9AA0A6"
+                                             Foreground="{DynamicResource XScopeTextMuted}"
                                              Margin="0,0,10,0" />
                     <Button DockPanel.Dock="Right"
                             Style="{StaticResource MaterialDesignIconButton}"
@@ -265,7 +295,7 @@
                             Command="{Binding ClearSearchCommand}"
                             Visibility="{Binding IsSearching, Converter={StaticResource XScopeBoolToVis}}"
                             ToolTip="Clear">
-                        <materialDesign:PackIcon Kind="Close" Width="16" Height="16" Foreground="#5F6368" />
+                        <materialDesign:PackIcon Kind="Close" Width="16" Height="16" Foreground="{DynamicResource XScopeTextSecondary}" />
                     </Button>
                     <TextBox x:Name="SettingsSearchBox"
                              Text="{Binding SettingsSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -290,7 +320,7 @@
                     <TextBlock Text="{Binding L.GitHubTitle}" FontSize="28" Margin="0,0,0,8" />
                     <TextBlock Text="{Binding L.GitHubDescription}"
                                FontSize="14"
-                               Foreground="#5F6368"
+                               Foreground="{DynamicResource XScopeTextSecondary}"
                                TextWrapping="Wrap"
                                Margin="0,0,0,8" />
 
@@ -304,10 +334,10 @@
                         <StackPanel>
                             <TextBlock Text="{Binding GitHub.DetailText}"
                                        FontSize="12"
-                                       Foreground="#80868B"
+                                       Foreground="{DynamicResource XScopeTextMuted}"
                                        TextWrapping="Wrap"
                                        Margin="0,0,0,8" />
-                            <TextBlock FontSize="11" Foreground="#9AA0A6" Margin="0,0,0,12" TextWrapping="Wrap">
+                            <TextBlock FontSize="11" Foreground="{DynamicResource XScopeTextMuted}" Margin="0,0,0,12" TextWrapping="Wrap">
                                 <Run Text="data_root - " />
                                 <Run Text="{Binding GitHub.DataRootText, Mode=OneWay}" />
                             </TextBlock>
@@ -407,12 +437,12 @@
                     <TextBlock Text="{Binding L.SearchTitle}" FontSize="28" Margin="0,0,0,8" />
                     <TextBlock Text="{Binding L.SearchDescription}"
                                FontSize="14"
-                               Foreground="#5F6368"
+                               Foreground="{DynamicResource XScopeTextSecondary}"
                                TextWrapping="Wrap"
                                Margin="0,0,0,8" />
                     <TextBlock Text="{Binding SearchModulesEmptyText}"
                                FontSize="14"
-                               Foreground="#5F6368"
+                               Foreground="{DynamicResource XScopeTextSecondary}"
                                Margin="0,16,0,0"
                                Visibility="{Binding HasSearchModules, Converter={StaticResource InvertBooleanToVisibilityConverter}}" />
                     <ItemsControl ItemsSource="{Binding SearchModules}"
@@ -430,13 +460,13 @@
                                                 <TextBlock Text="{Binding Name}" Style="{StaticResource SettingsExpanderHeaderTitle}" />
                                                 <TextBlock Text="{Binding AuthHint}"
                                                            Style="{StaticResource SettingsExpanderHeaderHint}"
-                                                           Foreground="#1A73E8" />
+                                                           Foreground="{DynamicResource XScopeAccent}" />
                                             </StackPanel>
                                         </controls:SettingsAccordionItem.Header>
                                         <StackPanel>
                                             <TextBlock Text="{Binding Description}"
                                                        FontSize="12"
-                                                       Foreground="#5F6368"
+                                                       Foreground="{DynamicResource XScopeTextSecondary}"
                                                        TextWrapping="Wrap" />
                                             <StackPanel Margin="0,12,0,0"
                                                         Visibility="{Binding SupportsApiKeyEntry, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -445,7 +475,7 @@
                                                            FontWeight="SemiBold" />
                                                 <TextBlock Text="{Binding DataContext.L.SearchApiKeyHint, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            FontSize="12"
-                                                           Foreground="#5F6368"
+                                                           Foreground="{DynamicResource XScopeTextSecondary}"
                                                            TextWrapping="Wrap"
                                                            Margin="0,2,0,8" />
                                                 <PasswordBox Margin="0,0,0,10"
@@ -459,7 +489,7 @@
                                                         IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}" />
                                                 <TextBlock Text="{Binding StatusText}"
                                                            FontSize="12"
-                                                           Foreground="#5F6368"
+                                                           Foreground="{DynamicResource XScopeTextSecondary}"
                                                            TextWrapping="Wrap"
                                                            Margin="0,8,0,0" />
                                             </StackPanel>
@@ -490,7 +520,7 @@
                     <TextBlock Text="{Binding L.AiTitle}" FontSize="28" Margin="0,0,0,8" />
                     <TextBlock Text="{Binding L.AiDescription}"
                                FontSize="14"
-                               Foreground="#5F6368"
+                               Foreground="{DynamicResource XScopeTextSecondary}"
                                TextWrapping="Wrap"
                                Margin="0,0,0,8" />
                     <ItemsControl ItemsSource="{Binding AiProviders}">
@@ -509,7 +539,7 @@
                                                    FontWeight="SemiBold" />
                                         <TextBlock Text="{Binding DataContext.L.AiApiKeyHint, RelativeSource={RelativeSource AncestorType=Window}}"
                                                    FontSize="12"
-                                                   Foreground="#5F6368"
+                                                   Foreground="{DynamicResource XScopeTextSecondary}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,2,0,8" />
                                         <PasswordBox Margin="0,0,0,10"
@@ -533,7 +563,7 @@
                                                    FontWeight="SemiBold" />
                                         <TextBlock Text="{Binding DataContext.L.AiModelHint, RelativeSource={RelativeSource AncestorType=Window}}"
                                                    FontSize="12"
-                                                   Foreground="#5F6368"
+                                                   Foreground="{DynamicResource XScopeTextSecondary}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,2,0,8" />
                                         <ComboBox ItemsSource="{Binding Models}"
@@ -551,7 +581,7 @@
                                                    Margin="0,16,0,0" />
                                         <TextBlock Text="{Binding DataContext.L.AiCapsHint, RelativeSource={RelativeSource AncestorType=Window}}"
                                                    FontSize="12"
-                                                   Foreground="#5F6368"
+                                                   Foreground="{DynamicResource XScopeTextSecondary}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,2,0,8" />
                                         <StackPanel>
@@ -570,7 +600,7 @@
 
                                         <TextBlock Text="{Binding StatusText}"
                                                    FontSize="12"
-                                                   Foreground="#5F6368"
+                                                   Foreground="{DynamicResource XScopeTextSecondary}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,10,0,0" />
                                     </StackPanel>
@@ -578,6 +608,43 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Appearance / Theme -->
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          Visibility="{Binding IsAppearance, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding L.ThemeTitle}" FontSize="28" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding L.ThemeDescription}"
+                               FontSize="14"
+                               Foreground="{DynamicResource XScopeTextSecondary}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8" />
+                    <Border Style="{StaticResource SettingsRow}" BorderThickness="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="260" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Text="{Binding L.ThemeDisplay}" FontSize="14" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding L.ThemeDisplayHint}"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource XScopeTextSecondary}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1"
+                                      VerticalAlignment="Center"
+                                      ItemsSource="{Binding ThemeChoices}"
+                                      SelectedItem="{Binding SelectedTheme, Mode=TwoWay}"
+                                      DisplayMemberPath="DisplayName"
+                                      FontSize="14"
+                                      Padding="12,10" />
+                        </Grid>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
 
@@ -589,7 +656,7 @@
                     <TextBlock Text="{Binding L.LanguageTitle}" FontSize="28" Margin="0,0,0,8" />
                     <TextBlock Text="{Binding L.LanguageDescription}"
                                FontSize="14"
-                               Foreground="#5F6368"
+                               Foreground="{DynamicResource XScopeTextSecondary}"
                                TextWrapping="Wrap"
                                Margin="0,0,0,8" />
                     <Border Style="{StaticResource SettingsRow}" BorderThickness="0">
@@ -602,7 +669,7 @@
                                 <TextBlock Text="{Binding L.LanguageDisplay}" FontSize="14" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding L.LanguageDisplayHint}"
                                            FontSize="12"
-                                           Foreground="#5F6368"
+                                           Foreground="{DynamicResource XScopeTextSecondary}"
                                            TextWrapping="Wrap"
                                            Margin="0,4,0,0" />
                             </StackPanel>
@@ -623,6 +690,14 @@
                           VerticalScrollBarVisibility="Auto"
                           Visibility="{Binding IsAbout, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                    <Image Source="pack://application:,,,/Assets/icon.png"
+                           Width="72"
+                           Height="72"
+                           Margin="0,0,0,16"
+                           HorizontalAlignment="Left"
+                           Stretch="Uniform"
+                           SnapsToDevicePixels="True"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
                     <TextBlock Text="{Binding L.AboutTitle}" FontSize="28" Margin="0,0,0,8" />
                     <Border Style="{StaticResource SettingsRow}">
                         <Grid>
@@ -637,7 +712,7 @@
                             <TextBlock Grid.Column="1"
                                        Text="{Binding VersionLabel}"
                                        FontSize="14"
-                                       Foreground="#5F6368"
+                                       Foreground="{DynamicResource XScopeTextSecondary}"
                                        VerticalAlignment="Center" />
                         </Grid>
                     </Border>
@@ -654,7 +729,7 @@
                             <TextBlock Grid.Column="1"
                                        Text="{Binding DeveloperLabel}"
                                        FontSize="14"
-                                       Foreground="#5F6368"
+                                       Foreground="{DynamicResource XScopeTextSecondary}"
                                        VerticalAlignment="Center" />
                         </Grid>
                     </Border>
@@ -663,7 +738,7 @@
 
             <!-- Search results: last sibling + ZIndex so section panels cannot cover it -->
             <Border Grid.Row="1"
-                    Background="#FFFFFF"
+                    Background="{DynamicResource XScopeSurface}"
                     Panel.ZIndex="20"
                     Visibility="{Binding IsSearching, Converter={StaticResource XScopeBoolToVis}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -673,7 +748,7 @@
                                    Margin="0,0,0,8" />
                         <TextBlock Text="{Binding SearchEmptyText}"
                                    FontSize="14"
-                                   Foreground="#5F6368"
+                                   Foreground="{DynamicResource XScopeTextSecondary}"
                                    TextWrapping="Wrap"
                                    Margin="0,16,0,0"
                                    Visibility="{Binding HasSearchResults, Converter={StaticResource XScopeInvertBoolToVis}}" />
@@ -693,13 +768,13 @@
                                                         Background="Transparent"
                                                         CornerRadius="12"
                                                         Padding="12,14"
-                                                        BorderBrush="#E8EAED"
+                                                        BorderBrush="{DynamicResource XScopeBorder}"
                                                         BorderThickness="0,0,0,1">
                                                     <ContentPresenter />
                                                 </Border>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeHover}" />
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
@@ -708,14 +783,14 @@
                                             <TextBlock Text="{Binding Title}"
                                                        FontSize="14"
                                                        FontWeight="SemiBold"
-                                                       Foreground="#202124" />
+                                                       Foreground="{DynamicResource XScopeTextPrimary}" />
                                             <TextBlock Text="{Binding Category}"
                                                        FontSize="12"
-                                                       Foreground="#1A73E8"
+                                                       Foreground="{DynamicResource XScopeAccent}"
                                                        Margin="0,4,0,0" />
                                             <TextBlock Text="{Binding Snippet}"
                                                        FontSize="12"
-                                                       Foreground="#5F6368"
+                                                       Foreground="{DynamicResource XScopeTextSecondary}"
                                                        TextWrapping="Wrap"
                                                        Margin="0,4,0,0" />
                                         </StackPanel>
@@ -727,5 +802,6 @@
                 </ScrollViewer>
             </Border>
         </Grid>
+        </Border>
     </Grid>
 </Window>

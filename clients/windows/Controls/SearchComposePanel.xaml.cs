@@ -1,28 +1,30 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
+using XScope.Services;
 using XScope.ViewModels;
 
 namespace XScope.Controls;
 
 public partial class SearchComposePanel : UserControl
 {
-    private static readonly Color GoogleBlue = Color.FromRgb(0x1A, 0x73, 0xE8);
-    private static readonly Color GoogleBlueSoft = Color.FromRgb(0xE8, 0xF0, 0xFE);
-    private static readonly Color Ink = Color.FromRgb(0x20, 0x21, 0x24);
-    private static readonly Color Muted = Color.FromRgb(0x5F, 0x63, 0x68);
-    private static readonly Color Hairline = Color.FromRgb(0xE8, 0xEA, 0xED);
-    private static readonly Color White = Colors.White;
-
     public static readonly DependencyProperty CompactProperty =
         DependencyProperty.Register(
             nameof(Compact),
             typeof(bool),
             typeof(SearchComposePanel),
             new PropertyMetadata(false, OnCompactChanged));
+
+    public static readonly DependencyProperty PreferPopupAboveProperty =
+        DependencyProperty.Register(
+            nameof(PreferPopupAbove),
+            typeof(bool),
+            typeof(SearchComposePanel),
+            new PropertyMetadata(false));
 
     private MainShellViewModel? _shell;
     private int _appliedLevel = -1;
@@ -39,13 +41,35 @@ public partial class SearchComposePanel : UserControl
             _chromeReady = true;
             ApplyPrecisionChrome(force: true);
             SyncSearchChromeHeight();
+            PrecisionPopup.CustomPopupPlacementCallback = PlacePrecisionPopup;
+            ThemeService.ThemeChanged += OnThemeChanged;
         };
+        Unloaded += (_, _) => ThemeService.ThemeChanged -= OnThemeChanged;
+    }
+
+    private void OnThemeChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(OnThemeChanged);
+            return;
+        }
+
+        ApplyPrecisionChrome(force: true);
+        ApplySearchChromeShadow();
     }
 
     public bool Compact
     {
         get => (bool)GetValue(CompactProperty);
         set => SetValue(CompactProperty, value);
+    }
+
+    /// <summary>When true (follow-up bar at window bottom), open precision popup above the toggle.</summary>
+    public bool PreferPopupAbove
+    {
+        get => (bool)GetValue(PreferPopupAboveProperty);
+        set => SetValue(PreferPopupAboveProperty, value);
     }
 
     private static void OnCompactChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -61,17 +85,33 @@ public partial class SearchComposePanel : UserControl
         _compact = compact;
         SearchChrome.MinHeight = compact ? 48 : 52;
         SearchChrome.MaxHeight = compact ? 140 : 160;
-        SearchChrome.CornerRadius = new CornerRadius(compact ? 24 : 26);
-        SearchChrome.Effect = compact
-            ? null
-            : new DropShadowEffect
-            {
-                BlurRadius = 8,
-                ShadowDepth = 1,
-                Opacity = 0.12,
-                Color = Color.FromRgb(0x20, 0x21, 0x24),
-            };
+        var radius = compact ? 24 : 26;
+        SearchChrome.CornerRadius = new CornerRadius(radius);
+        if (SearchChromeFill is not null)
+        {
+            SearchChromeFill.CornerRadius = new CornerRadius(Math.Max(0, radius - 1));
+        }
+
+        ApplySearchChromeShadow();
         SyncSearchChromeHeight();
+    }
+
+    private void ApplySearchChromeShadow()
+    {
+        // DropShadow on a stroked/rounded border paints a black fringe at curves in dark theme.
+        if (_compact || ThemeService.IsDarkEffective)
+        {
+            SearchChrome.Effect = null;
+            return;
+        }
+
+        SearchChrome.Effect = new DropShadowEffect
+        {
+            BlurRadius = 8,
+            ShadowDepth = 1,
+            Opacity = 0.12,
+            Color = Color.FromRgb(0x20, 0x21, 0x24),
+        };
     }
 
     private void OnSearchPreviewKeyDown(object sender, KeyEventArgs e)
@@ -168,12 +208,21 @@ public partial class SearchComposePanel : UserControl
 
         _appliedLevel = level;
 
+        var accent = ThemeColor("XScopeAccent", Color.FromRgb(0x1A, 0x73, 0xE8));
+        var accentText = ThemeColor("XScopeAccentText", Color.FromRgb(0x19, 0x67, 0xD2));
+        var ink = ThemeColor("XScopeTextPrimary", Color.FromRgb(0x20, 0x21, 0x24));
+        var muted = ThemeColor("XScopeTextSecondary", Color.FromRgb(0x5F, 0x63, 0x68));
+        var faint = ThemeColor("XScopeTextMuted", Color.FromRgb(0x9A, 0xA0, 0xA6));
+        var surface = ThemeColor("XScopeSurfaceAlt", Colors.White);
+        var border = ThemeColor("XScopeBorder", Color.FromRgb(0xE8, 0xEA, 0xED));
+        var dark = ThemeService.IsDarkEffective;
+
         var (chipBg, chipFg, chipChevron) = level switch
         {
-            0 => (Color.FromRgb(0xF1, 0xF3, 0xF4), Color.FromRgb(0x3C, 0x40, 0x43), Color.FromRgb(0x80, 0x86, 0x8B)),
-            1 => (GoogleBlueSoft, Ink, Muted),
-            2 => (Color.FromRgb(0xD2, 0xE3, 0xFC), Color.FromRgb(0x17, 0x4E, 0xA6), Color.FromRgb(0x17, 0x4E, 0xA6)),
-            _ => (GoogleBlueSoft, GoogleBlue, GoogleBlue),
+            0 => (Colors.Transparent, ink, faint),
+            1 => (Colors.Transparent, ink, muted),
+            2 => (Colors.Transparent, accentText, accentText),
+            _ => (Colors.Transparent, accent, accent),
         };
 
         PrecisionToggle.ApplyTemplate();
@@ -185,14 +234,13 @@ public partial class SearchComposePanel : UserControl
         SetBrush(PrecisionChipLabel, TextBlock.ForegroundProperty, chipFg);
         SetBrush(PrecisionChipChevron, Control.ForegroundProperty, chipChevron);
 
-        // Popup stays white Google chrome — max energy lives only on the slider 流光.
-        SetBrush(PrecisionPopupRoot, Border.BackgroundProperty, White);
-        SetBrush(PrecisionPopupRoot, Border.BorderBrushProperty, Hairline);
+        SetBrush(PrecisionPopupRoot, Border.BackgroundProperty, surface);
+        SetBrush(PrecisionPopupRoot, Border.BorderBrushProperty, border);
         PrecisionPopupRoot.BorderThickness = new Thickness(1);
-        SetBrush(PrecisionPopupTitle, TextBlock.ForegroundProperty, Muted);
-        SetBrush(PrecisionPopupValue, TextBlock.ForegroundProperty, level >= 1 ? GoogleBlue : Ink);
-        SetBrush(PrecisionHintLine, TextBlock.ForegroundProperty, Muted);
-        SetBrush(PrecisionDetailLine, TextBlock.ForegroundProperty, Color.FromRgb(0x80, 0x86, 0x8B));
+        SetBrush(PrecisionPopupTitle, TextBlock.ForegroundProperty, muted);
+        SetBrush(PrecisionPopupValue, TextBlock.ForegroundProperty, level >= 1 ? accent : ink);
+        SetBrush(PrecisionHintLine, TextBlock.ForegroundProperty, muted);
+        SetBrush(PrecisionDetailLine, TextBlock.ForegroundProperty, faint);
 
         PrecisionWash.Opacity = 0;
         PrecisionEdgeGlow.Opacity = 0;
@@ -200,9 +248,9 @@ public partial class SearchComposePanel : UserControl
 
         if (PrecisionPopupShadow is not null)
         {
-            PrecisionPopupShadow.Color = Color.FromRgb(0x20, 0x21, 0x24);
-            PrecisionPopupShadow.Opacity = 0.14;
-            PrecisionPopupShadow.BlurRadius = 12;
+            PrecisionPopupShadow.Color = dark ? Colors.Black : Color.FromRgb(0x20, 0x21, 0x24);
+            PrecisionPopupShadow.Opacity = dark ? 0.45 : 0.14;
+            PrecisionPopupShadow.BlurRadius = dark ? 18 : 12;
             PrecisionPopupShadow.ShadowDepth = 1;
         }
 
@@ -210,19 +258,30 @@ public partial class SearchComposePanel : UserControl
         for (var i = 0; i < labels.Length; i++)
         {
             var active = i == level;
-            SetBrush(labels[i], TextBlock.ForegroundProperty, active ? GoogleBlue : Muted);
+            SetBrush(labels[i], TextBlock.ForegroundProperty, active ? accent : muted);
             labels[i].FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal;
             labels[i].Opacity = active ? 1.0 : 0.72;
         }
 
+        PrecisionFlow.ApplyThemeColors(accent, border, dark);
         SyncFlowActive();
     }
 
-    private void SyncFlowActive() =>
-        PrecisionFlow.FlowActive = PrecisionPopup.IsOpen && _appliedLevel == 3;
+    private static Color ThemeColor(string key, Color fallback)
+    {
+        if (Application.Current?.TryFindResource(key) is SolidColorBrush brush)
+        {
+            return brush.Color;
+        }
+
+        return fallback;
+    }
 
     private static void SetBrush(DependencyObject target, DependencyProperty dp, Color color) =>
         target.SetValue(dp, new SolidColorBrush(color));
+
+    private void SyncFlowActive() =>
+        PrecisionFlow.FlowActive = PrecisionPopup.IsOpen && _appliedLevel == 3;
 
     private void OnProviderMenuOpen(object sender, RoutedEventArgs e) => ProviderPopup.IsOpen = true;
 
@@ -295,6 +354,53 @@ public partial class SearchComposePanel : UserControl
             AlignPrecisionLabels();
             SyncFlowActive();
         }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private CustomPopupPlacement[] PlacePrecisionPopup(Size popupSize, Size targetSize, Point offset)
+    {
+        // Center popup under/over the toggle; keep horizontal shift from overflowing left.
+        var x = Math.Min(0, targetSize.Width - popupSize.Width);
+        if (PreferPopupAbove || ShouldOpenPrecisionAbove(popupSize.Height))
+        {
+            return
+            [
+                new CustomPopupPlacement(new Point(x, -popupSize.Height - 6), PopupPrimaryAxis.Horizontal),
+                new CustomPopupPlacement(new Point(x, targetSize.Height + 6), PopupPrimaryAxis.Horizontal),
+            ];
+        }
+
+        return
+        [
+            new CustomPopupPlacement(new Point(x, targetSize.Height + 6), PopupPrimaryAxis.Horizontal),
+            new CustomPopupPlacement(new Point(x, -popupSize.Height - 6), PopupPrimaryAxis.Horizontal),
+        ];
+    }
+
+    private bool ShouldOpenPrecisionAbove(double popupHeight)
+    {
+        try
+        {
+            var toggle = PrecisionToggle;
+            var window = Window.GetWindow(toggle);
+            if (window is null)
+            {
+                return PreferPopupAbove;
+            }
+
+            var screen = toggle.PointToScreen(new Point(0, toggle.ActualHeight));
+            var source = PresentationSource.FromVisual(window);
+            if (source?.CompositionTarget is not null)
+            {
+                screen = source.CompositionTarget.TransformFromDevice.Transform(screen);
+            }
+
+            var spaceBelow = window.Top + window.ActualHeight - screen.Y;
+            return spaceBelow < popupHeight + 24;
+        }
+        catch
+        {
+            return PreferPopupAbove;
+        }
     }
 
     private void AlignPrecisionLabels()

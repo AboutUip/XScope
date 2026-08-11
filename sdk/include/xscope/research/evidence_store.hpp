@@ -27,6 +27,15 @@ public:
     std::int64_t append_event(const std::string& run_id, const std::string& phase,
                               const std::string& payload_json);
 
+    struct RunEvent {
+        std::int64_t seq = 0;
+        std::string phase;
+        std::string payload_json;
+        std::int64_t ts = 0;
+    };
+    std::vector<RunEvent> list_events(const std::string& run_id, int limit = 0);
+    int count_events(const std::string& run_id);
+
 private:
     storage::Database* db_ = nullptr;
     std::filesystem::path files_dir_;

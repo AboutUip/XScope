@@ -40,10 +40,25 @@ internal sealed partial class ResearchChoiceOption : ObservableObject
     public string Badge { get; init; } = "";
 }
 
-/// <summary>Realtime feed row: thinking / keyword / hit / system.</summary>
+/// <summary>One hit nested under a search tool card.</summary>
+internal sealed partial class ResearchFeedHit : ObservableObject
+{
+    [ObservableProperty]
+    private string _title = "";
+
+    [ObservableProperty]
+    private string _url = "";
+
+    [ObservableProperty]
+    private string _snippet = "";
+
+    public bool HasUrl => !string.IsNullOrWhiteSpace(Url);
+}
+
+/// <summary>Realtime feed row: thinking / keyword / hit / tool / system.</summary>
 internal sealed partial class ResearchFeedItem : ObservableObject
 {
-    public required string Kind { get; init; } // thinking | keyword | hit | system
+    public required string Kind { get; init; } // thinking | keyword | hit | tool | system
 
     [ObservableProperty]
     private string _title = "";
@@ -55,10 +70,42 @@ internal sealed partial class ResearchFeedItem : ObservableObject
     private string _meta = "";
 
     [ObservableProperty]
+    private string _url = "";
+
+    [ObservableProperty]
     private bool _isExpanded = true;
 
+    /// <summary>True while tokens for this bubble are still arriving.</summary>
+    [ObservableProperty]
+    private bool _isStreaming;
+
+    [ObservableProperty]
+    private bool _hitsExpanded;
+
+    public long TurnId { get; set; }
+
+    public ObservableCollection<ResearchFeedHit> Hits { get; } = [];
+
+    public ResearchFeedItem()
+    {
+        Hits.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasHits));
+            OnPropertyChanged(nameof(HitsCountLabel));
+        };
+    }
+
     public bool IsThinking => Kind == "thinking";
+    public bool IsSearch => Kind is "keyword" or "search";
+    public bool IsHit => Kind == "hit";
+    public bool IsTool => Kind == "tool";
+    public bool IsUser => Kind == "user";
+    public bool IsSystem => Kind == "system";
     public bool ShowExpander => Kind == "thinking" && !string.IsNullOrWhiteSpace(Body);
+    public bool HasUrl => !string.IsNullOrWhiteSpace(Url);
+    public bool HasHits => Hits.Count > 0;
+    public string HitsCountLabel =>
+        Hits.Count > 0 ? $"{Hits.Count} {Loc.Instance.T("research.feed.hits")}" : "";
 }
 
 internal partial class ResearchProgressViewModel : ObservableObject
@@ -94,6 +141,9 @@ internal partial class ResearchProgressViewModel : ObservableObject
     private bool _isWaitingUser;
 
     [ObservableProperty]
+    private bool _isAwaitingConfirm;
+
+    [ObservableProperty]
     private bool _isRunning;
 
     [ObservableProperty]
@@ -114,8 +164,33 @@ internal partial class ResearchProgressViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasReport;
 
-    /// <summary>Running with no clarify sheet and no final report yet.</summary>
-    public bool ShowBusyStage => IsRunning && !IsWaitingUser && !HasReport;
+    [ObservableProperty]
+    private string _knowledgeGraphJson = "";
+
+    public string ProjectId => _projectId;
+
+    /// <summary>Unused — discovery uses the chat stream, not a status strip.</summary>
+    public bool ShowBusyStage => false;
+
+    /// <summary>Model proposed a clear need — user must Confirm.</summary>
+    public bool ShowConfirmStage => IsAwaitingConfirm && !RequirementsLocked;
+
+    /// <summary>Multiple-choice clarify (not the lock-confirm card).</summary>
+    public bool ShowClarifyStage => IsWaitingUser && !IsAwaitingConfirm && !RequirementsLocked;
+
+    /// <summary>Cursor-style conversation stream from discovery through deep research.</summary>
+    public bool ShowChatStream =>
+        IsRunning || IsWaitingUser || IsAwaitingConfirm || RequirementsLocked || HasReport || Feed.Count > 0;
+
+    /// <summary>Top search box — only before a run starts on this project view.</summary>
+    public bool ShowTopCompose => !ShowChatStream;
+
+    /// <summary>Bottom follow-up box — after a report finishes.</summary>
+    public bool ShowFollowUpCompose =>
+        HasReport && !IsRunning && !IsWaitingUser && !IsAwaitingConfirm;
+
+    /// <summary>Alias kept for older bindings.</summary>
+    public bool ShowTimeline => ShowChatStream;
 
     public bool HasKeywords => Keywords.Count > 0;
     public bool HasEvidence => Evidence.Count > 0;
@@ -160,6 +235,165 @@ internal partial class ResearchProgressViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Load a historical project into the research UI.
+    /// Lightweight: no full event-stream replay (that rebuilt dozens of nested Feed cards and froze UI).
+    /// Snapshot ships report + run meta only; chat shows a short restore stub.
+    /// </summary>
+    public async Task<ResearchProjectSnapshot> LoadProjectAsync(string projectId)
+    {
+        await StopPollingAsync(cancelRun: false);
+
+        ResearchProjectSnapshot snap;
+        try
+        {
+            snap = await Task.Run(() => _research.GetProjectSnapshot(projectId));
+        }
+        catch (Exception ex)
+        {
+            await DispatchAsync(() =>
+            {
+                ResetUi();
+                _projectId = projectId;
+                StatusLabel = ex.Message;
+                RaiseChanged();
+            });
+            throw;
+        }
+
+        // Frame 1: shell + short feed stub (no event replay, no Markdown yet).
+        await DispatchAsync(() =>
+        {
+            ResetUi();
+            _projectId = projectId;
+            _runId = snap.RunId;
+            IsRunning = false;
+            IsWaitingUser = false;
+            IsAwaitingConfirm = false;
+            IsFeedExpanded = false;
+            KnowledgeGraphJson = GraphJsonHasNodes(snap.KnowledgeGraphJson)
+                ? snap.KnowledgeGraphJson
+                : "";
+
+            if (!string.IsNullOrWhiteSpace(snap.Query))
+            {
+                PushFeed("system", Loc.Instance.T("research.phase.start"), snap.Query);
+            }
+
+            if (!string.IsNullOrWhiteSpace(snap.Summary))
+            {
+                SummaryText = CleanLockedText(snap.Summary);
+                HasSummary = !string.IsNullOrWhiteSpace(SummaryText);
+                RequirementsLocked = true;
+                if (HasSummary)
+                {
+                    PushFeed("system", Loc.Instance.T("research.feed.locked"), SummaryText);
+                }
+            }
+
+            var steps = Math.Max(snap.EventCount, 0);
+            var rounds = Math.Max(snap.EvidenceCount, 0);
+            if (steps > 0 || rounds > 0)
+            {
+                PushFeed(
+                    "system",
+                    Loc.Instance.T("research.feed.next_step"),
+                    string.Format(Loc.Instance.T("research.feed.restore_summary"), steps, rounds));
+            }
+
+            if (!string.IsNullOrWhiteSpace(snap.ReportMarkdown) || snap.Status is "completed")
+            {
+                HasReport = true;
+                StatusLabel = Loc.Instance.T("research.status.completed");
+            }
+            else if (!string.IsNullOrWhiteSpace(snap.Status))
+            {
+                StatusLabel = MapStatus(snap.Status);
+            }
+            else
+            {
+                StatusLabel = Loc.Instance.T("main.research.ready");
+            }
+
+            RaiseChanged();
+        });
+
+        await DispatcherYieldAsync();
+
+        // Frame 2 (idle): bind Markdown once — MdXaml is the remaining heavy paint.
+        if (!string.IsNullOrWhiteSpace(snap.ReportMarkdown))
+        {
+            var md = snap.ReportMarkdown;
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher is not null)
+            {
+                await dispatcher.InvokeAsync(() =>
+                {
+                    ReportMarkdown = md;
+                    HasReport = true;
+                    StatusLabel = Loc.Instance.T("research.status.completed");
+                    RaiseChanged();
+                    HistoryRestored?.Invoke();
+                }, System.Windows.Threading.DispatcherPriority.ApplicationIdle).Task;
+            }
+            else
+            {
+                await DispatchAsync(() =>
+                {
+                    ReportMarkdown = md;
+                    HasReport = true;
+                    HistoryRestored?.Invoke();
+                });
+            }
+        }
+        else
+        {
+            await DispatchAsync(() => HistoryRestored?.Invoke());
+        }
+
+        return snap;
+    }
+
+    private static bool GraphJsonHasNodes(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("graph", out var nested) && nested.ValueKind == JsonValueKind.Object)
+            {
+                root = nested;
+            }
+
+            return root.TryGetProperty("nodes", out var nodes) &&
+                   nodes.ValueKind == JsonValueKind.Array &&
+                   nodes.GetArrayLength() > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static Task DispatcherYieldAsync()
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background).Task;
+    }
+
+    /// <summary>Fired after a historical project snapshot is applied to the UI.</summary>
+    public event Action? HistoryRestored;
+
     [RelayCommand]
     private async Task CancelAsync()
     {
@@ -179,17 +413,18 @@ internal partial class ResearchProgressViewModel : ObservableObject
         await StopPollingAsync(cancelRun: false);
         IsRunning = false;
         IsWaitingUser = false;
+        IsAwaitingConfirm = false;
         StatusLabel = Loc.Instance.T("research.status.cancelled");
         RaiseChanged();
     }
 
     private bool CanContinue() =>
-        !string.IsNullOrEmpty(_runId) && IsWaitingUser && !_submittingReply;
+        !string.IsNullOrEmpty(_runId) && (IsWaitingUser || IsAwaitingConfirm) && !_submittingReply;
 
     [RelayCommand(CanExecute = nameof(CanContinue))]
     private async Task ContinueAsync()
     {
-        if (string.IsNullOrEmpty(_runId) || !IsWaitingUser || _submittingReply)
+        if (string.IsNullOrEmpty(_runId) || (!IsWaitingUser && !IsAwaitingConfirm) || _submittingReply)
         {
             return;
         }
@@ -197,8 +432,15 @@ internal partial class ResearchProgressViewModel : ObservableObject
         var reply = UserReply.Trim();
         if (reply.Length == 0)
         {
-            // Prefer picking a choice button; free-text is optional supplement.
-            StatusLabel = Loc.Instance.T("research.status.pick_or_type");
+            if (IsAwaitingConfirm)
+            {
+                StatusLabel = Loc.Instance.T("research.status.confirm_or_adjust");
+            }
+            else
+            {
+                StatusLabel = Loc.Instance.T("research.status.pick_or_type");
+            }
+
             RaiseChanged();
             return;
         }
@@ -209,7 +451,7 @@ internal partial class ResearchProgressViewModel : ObservableObject
     [RelayCommand]
     private async Task ChooseAsync(ResearchChoiceOption? option)
     {
-        if (option is null || _submittingReply || !IsWaitingUser)
+        if (option is null || _submittingReply || !IsWaitingUser || IsAwaitingConfirm)
         {
             return;
         }
@@ -218,6 +460,17 @@ internal partial class ResearchProgressViewModel : ObservableObject
             ? option.Label
             : $"{option.Id}: {option.Label} — {option.Hint}";
         await SubmitUserReplyAsync(reply);
+    }
+
+    [RelayCommand]
+    private async Task ConfirmNeedAsync()
+    {
+        if (!IsAwaitingConfirm || _submittingReply || string.IsNullOrEmpty(_runId))
+        {
+            return;
+        }
+
+        await SubmitUserReplyAsync("__confirm__");
     }
 
     private async Task SubmitUserReplyAsync(string reply)
@@ -232,8 +485,10 @@ internal partial class ResearchProgressViewModel : ObservableObject
         var runId = _runId;
         try
         {
-            PushFeed("system", Loc.Instance.T("research.feed.user_reply"), reply);
+            PushFeed("user", Loc.Instance.T("research.feed.user_reply"),
+                reply == "__confirm__" ? Loc.Instance.T("research.confirm.accepted") : reply);
             IsWaitingUser = false;
+            IsAwaitingConfirm = false;
             var promptSnapshot = ClarifyPrompt;
             ClarifyPrompt = "";
             Choices.Clear();
@@ -263,14 +518,27 @@ internal partial class ResearchProgressViewModel : ObservableObject
     partial void OnIsWaitingUserChanged(bool value)
     {
         ContinueCommand.NotifyCanExecuteChanged();
-        OnPropertyChanged(nameof(ShowBusyStage));
+        NotifyStageFlags();
     }
 
-    partial void OnIsRunningChanged(bool value) => OnPropertyChanged(nameof(ShowBusyStage));
+    partial void OnIsAwaitingConfirmChanged(bool value) => NotifyStageFlags();
 
-    partial void OnHasReportChanged(bool value) => OnPropertyChanged(nameof(ShowBusyStage));
+    partial void OnIsRunningChanged(bool value) => NotifyStageFlags();
 
-    partial void OnRequirementsLockedChanged(bool value) => OnPropertyChanged(nameof(ShowBusyStage));
+    partial void OnHasReportChanged(bool value) => NotifyStageFlags();
+
+    partial void OnRequirementsLockedChanged(bool value) => NotifyStageFlags();
+
+    private void NotifyStageFlags()
+    {
+        OnPropertyChanged(nameof(ShowBusyStage));
+        OnPropertyChanged(nameof(ShowConfirmStage));
+        OnPropertyChanged(nameof(ShowClarifyStage));
+        OnPropertyChanged(nameof(ShowChatStream));
+        OnPropertyChanged(nameof(ShowTopCompose));
+        OnPropertyChanged(nameof(ShowFollowUpCompose));
+        OnPropertyChanged(nameof(ShowTimeline));
+    }
 
     public async Task StopPollingAsync(bool cancelRun)
     {
@@ -316,10 +584,12 @@ internal partial class ResearchProgressViewModel : ObservableObject
         ClarifyPrompt = "";
         UserReply = "";
         IsWaitingUser = false;
+        IsAwaitingConfirm = false;
         HasSummary = false;
         RequirementsLocked = false;
         HasReport = false;
         ReportMarkdown = "";
+        KnowledgeGraphJson = "";
         IsFeedExpanded = true;
         _lastClarifyPrompt = "";
         _submittingReply = false;
@@ -427,37 +697,165 @@ internal partial class ResearchProgressViewModel : ObservableObject
         {
             case "thinking":
             {
-                var text = TruncateUi(ReadString(evt.Payload, "text") ?? "", 280);
+                // Streamed thinking can be long; keep high fidelity in the chat bubble.
+                var text = TruncateUi(ReadString(evt.Payload, "text") ?? "", 32000);
+                if (string.IsNullOrWhiteSpace(text) || text is "…" or "...")
+                {
+                    break;
+                }
+
                 LatestThinking = text;
-                // Collapse by default — expanded thinking text thrash-layouts the rail.
-                PushFeed("thinking", Loc.Instance.T("research.feed.thinking"), text, expand: false);
+                var streaming = ReadStreamingFlag(evt.Payload, defaultIfMissing: false);
+                var turnId = ReadInt64(evt.Payload, "turn_id");
+
+                // Only update in place while THIS turn is still streaming.
+                // Sealed bubbles stay in history — a new turn starts a new row (Cursor-like).
+                if (Feed.Count > 0 && Feed[^1].IsThinking && Feed[^1].IsStreaming &&
+                    (turnId == 0 || Feed[^1].TurnId == 0 || Feed[^1].TurnId == turnId))
+                {
+                    Feed[^1].Body = text;
+                    Feed[^1].TurnId = turnId != 0 ? turnId : Feed[^1].TurnId;
+                    Feed[^1].IsStreaming = streaming;
+                    Feed[^1].IsExpanded = true;
+                    FeedUpdated?.Invoke();
+                }
+                else if (Feed.Count > 0 && Feed[^1].IsThinking && turnId != 0 &&
+                         Feed[^1].TurnId == turnId)
+                {
+                    // Same turn final polish (persist frame after live seal) — do not spawn a twin.
+                    Feed[^1].Body = text;
+                    Feed[^1].IsStreaming = false;
+                    FeedUpdated?.Invoke();
+                }
+                else
+                {
+                    if (Feed.Count > 0 && Feed[^1].IsThinking)
+                    {
+                        Feed[^1].IsStreaming = false;
+                        Feed[^1].IsExpanded = false;
+                    }
+
+                    PushFeed("thinking", Loc.Instance.T("research.feed.thinking"), text, expand: true);
+                    Feed[^1].IsStreaming = streaming;
+                    Feed[^1].TurnId = turnId;
+                }
+
                 StatusLabel = Loc.Instance.T("research.status.thinking");
                 break;
             }
             case "plan":
-                // Catalog dumps are huge; never treat as keyword feed rows.
+            {
+                // Capture knowledge graph snapshots emitted during research.
+                if (evt.Payload.ValueKind == JsonValueKind.Object &&
+                    evt.Payload.TryGetProperty("knowledge_graph", out var kg) &&
+                    kg.ValueKind == JsonValueKind.Object)
+                {
+                    KnowledgeGraphJson = kg.GetRawText();
+                }
+
+                // Catalog dumps / search plans: avoid duplicate chat rows.
+                // Real searches render via "searching"; only show non-search tool calls here.
+                var mid = ReadString(evt.Payload, "module_id") ?? "";
+                var ep = ReadString(evt.Payload, "endpoint") ?? "";
+                var path = ReadString(evt.Payload, "path") ?? "";
+                var q = ReadString(evt.Payload, "q") ?? ReadString(evt.Payload, "keyword") ?? "";
+                var note = ReadString(evt.Payload, "note") ?? "";
+                if (!string.IsNullOrWhiteSpace(note) &&
+                    string.IsNullOrWhiteSpace(mid) && string.IsNullOrWhiteSpace(path))
+                {
+                    // Seal any open thinking so the next AI turn cannot overwrite it.
+                    if (Feed.Count > 0 && Feed[^1].IsThinking)
+                    {
+                        Feed[^1].IsStreaming = false;
+                        Feed[^1].IsExpanded = false;
+                    }
+
+                    PushFeed("system", Loc.Instance.T("research.feed.next_step"), note);
+                    StatusLabel = Loc.Instance.T("research.status.researching");
+                    break;
+                }
+
+                var isSearchPlan = !string.IsNullOrWhiteSpace(mid) &&
+                                   string.IsNullOrWhiteSpace(path) &&
+                                   (ep is "web-search" or "ai-search" or "repositories" or "code" or
+                                    "issues" or "commits" or "users" or "topics" or "labels" or "");
+                if (isSearchPlan)
+                {
+                    StatusLabel = Loc.Instance.T("research.status.searching");
+                    break;
+                }
+
+                if (!string.IsNullOrWhiteSpace(path) || !string.IsNullOrWhiteSpace(note) ||
+                    !string.IsNullOrWhiteSpace(mid))
+                {
+                    if (Feed.Count > 0 && Feed[^1].IsThinking)
+                    {
+                        Feed[^1].IsStreaming = false;
+                        Feed[^1].IsExpanded = false;
+                    }
+
+                    var title = !string.IsNullOrWhiteSpace(path)
+                        ? $"github_rest {path}"
+                        : string.IsNullOrWhiteSpace(ep) ? mid : $"{mid}/{ep}";
+                    var body = !string.IsNullOrWhiteSpace(q) ? q : note;
+                    PushFeed("tool", title, body, mid, expand: false);
+                }
+
                 StatusLabel = Loc.Instance.T("research.status.researching");
                 break;
+            }
             case "keyword":
+                // Legacy duplicate of searching — ignore to prevent double cards.
+                StatusLabel = Loc.Instance.T("research.status.searching");
+                break;
             case "searching":
             {
                 var kw = TruncateUi(
                     ReadString(evt.Payload, "keyword")
                     ?? ReadString(evt.Payload, "q")
                     ?? "",
-                    96);
+                    200);
+                foreach (var prefix in new[]
+                         {
+                             "已根据对话与检索锁定需求：", "已根据对话与检索锁定需求:",
+                             "需求已锁定：", "已锁定：",
+                         })
+                {
+                    if (kw.StartsWith(prefix, StringComparison.Ordinal))
+                    {
+                        kw = kw[prefix.Length..].Trim();
+                    }
+                }
+
+                if (kw.Length >= 8 && kw.Length % 2 == 0)
+                {
+                    var half = kw.Length / 2;
+                    if (kw.AsSpan(0, half).SequenceEqual(kw.AsSpan(half)))
+                    {
+                        kw = kw[..half].Trim();
+                    }
+                }
+
                 if (!string.IsNullOrWhiteSpace(kw))
                 {
+                    if (Feed.Count > 0 && Feed[^1].IsThinking)
+                    {
+                        Feed[^1].IsStreaming = false;
+                        Feed[^1].IsExpanded = false;
+                    }
+
                     if (Keywords.Count < 24 && !Keywords.Contains(kw))
                     {
                         Keywords.Add(kw);
                     }
 
+                    var mid = TruncateUi(ReadString(evt.Payload, "module_id") ?? "", 32);
+                    var ep = TruncateUi(ReadString(evt.Payload, "endpoint") ?? "", 32);
                     PushFeed(
                         "keyword",
                         Loc.Instance.T("research.feed.keyword"),
                         kw,
-                        TruncateUi(ReadString(evt.Payload, "module_id") ?? "", 24),
+                        string.IsNullOrWhiteSpace(ep) ? mid : $"{mid} · {ep}",
                         expand: false);
                 }
 
@@ -478,12 +876,13 @@ internal partial class ResearchProgressViewModel : ObservableObject
 
                 var prompt = ReadString(evt.Payload, "prompt")
                     ?? Loc.Instance.T("research.clarify.default");
-                // Ignore duplicate clarify while already waiting on the same prompt.
-                if (IsWaitingUser && string.Equals(prompt, _lastClarifyPrompt, StringComparison.Ordinal))
+                if (IsWaitingUser && !IsAwaitingConfirm &&
+                    string.Equals(prompt, _lastClarifyPrompt, StringComparison.Ordinal))
                 {
                     break;
                 }
 
+                IsAwaitingConfirm = false;
                 IsWaitingUser = true;
                 ClarifyPrompt = prompt;
                 _lastClarifyPrompt = prompt;
@@ -493,10 +892,34 @@ internal partial class ResearchProgressViewModel : ObservableObject
                 ContinueCommand.NotifyCanExecuteChanged();
                 break;
             }
+            case "confirm_need":
+            {
+                if (_submittingReply)
+                {
+                    break;
+                }
+
+                var need = CleanLockedText(ReadString(evt.Payload, "clarified_need")
+                    ?? ReadString(evt.Payload, "summary")
+                    ?? "");
+                SummaryText = need;
+                HasSummary = !string.IsNullOrWhiteSpace(need);
+                ClarifyPrompt = ReadString(evt.Payload, "prompt")
+                    ?? Loc.Instance.T("research.confirm.prompt");
+                Choices.Clear();
+                IsAwaitingConfirm = true;
+                IsWaitingUser = true;
+                RequirementsLocked = false;
+                PushFeed("system", Loc.Instance.T("research.feed.confirm_need"), need);
+                StatusLabel = Loc.Instance.T("research.status.confirm_need");
+                ContinueCommand.NotifyCanExecuteChanged();
+                break;
+            }
             case "requirements_locked":
             {
                 RequirementsLocked = true;
                 IsWaitingUser = false;
+                IsAwaitingConfirm = false;
                 IsRunning = true;
                 IsFeedExpanded = true;
                 var need = CleanLockedText(ReadString(evt.Payload, "clarified_need")
@@ -522,14 +945,29 @@ internal partial class ResearchProgressViewModel : ObservableObject
                 var md = ReadString(evt.Payload, "markdown")
                     ?? ReadString(evt.Payload, "summary")
                     ?? "";
+                var streaming = evt.Payload.ValueKind == JsonValueKind.Object
+                    && evt.Payload.TryGetProperty("streaming", out var streamProp)
+                    && streamProp.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    && streamProp.GetBoolean();
                 if (!string.IsNullOrWhiteSpace(md))
                 {
                     ReportMarkdown = md;
                     HasReport = true;
                 }
 
-                PushFeed("system", Loc.Instance.T("research.feed.synthesize"),
-                    Loc.Instance.T("research.report.title"));
+                // Avoid spamming the feed while markdown tokens stream in.
+                if (!streaming)
+                {
+                    var already =
+                        Feed.Count > 0 && Feed[^1].IsSystem &&
+                        Feed[^1].Title == Loc.Instance.T("research.feed.synthesize");
+                    if (!already)
+                    {
+                        PushFeed("system", Loc.Instance.T("research.feed.synthesize"),
+                            Loc.Instance.T("research.report.title"));
+                    }
+                }
+
                 StatusLabel = Loc.Instance.T("research.status.synthesize");
                 break;
             }
@@ -552,6 +990,7 @@ internal partial class ResearchProgressViewModel : ObservableObject
 
                 RequirementsLocked = true;
                 IsWaitingUser = false;
+                IsAwaitingConfirm = false;
                 IsRunning = false;
                 IsFeedExpanded = false;
                 StatusLabel = HasReport
@@ -562,13 +1001,14 @@ internal partial class ResearchProgressViewModel : ObservableObject
             case "cancelled":
                 IsRunning = false;
                 IsWaitingUser = false;
+                IsAwaitingConfirm = false;
                 IsFeedExpanded = false;
                 StatusLabel = Loc.Instance.T("research.status.cancelled");
                 break;
             case "error":
                 IsRunning = false;
                 IsWaitingUser = false;
-                IsFeedExpanded = false;
+                IsAwaitingConfirm = false;
                 StatusLabel = ReadString(evt.Payload, "error")
                     ?? Loc.Instance.T("research.status.error");
                 PushFeed("system", Loc.Instance.T("research.phase.error"), StatusLabel);
@@ -662,12 +1102,44 @@ internal partial class ResearchProgressViewModel : ObservableObject
             ModuleId = moduleId,
             Status = Loc.Instance.T("research.evidence.collected"),
         });
-        PushFeed(
-            "hit",
-            string.IsNullOrWhiteSpace(title) ? url : title,
-            snippet,
-            string.IsNullOrWhiteSpace(keyword) ? moduleId : keyword,
-            expand: false);
+
+        // Nest hits under the latest search tool card so they don't flood the chat.
+        ResearchFeedItem? searchCard = null;
+        for (var i = Feed.Count - 1; i >= 0; i--)
+        {
+            if (Feed[i].IsSearch)
+            {
+                searchCard = Feed[i];
+                break;
+            }
+        }
+
+        if (searchCard is null)
+        {
+            // No open search card — keep a compact single-line hit rather than a large card.
+            PushFeed(
+                "hit",
+                string.IsNullOrWhiteSpace(title) ? url : title,
+                snippet,
+                string.IsNullOrWhiteSpace(keyword) ? moduleId : keyword,
+                expand: false,
+                url: url);
+            return;
+        }
+
+        if (searchCard.Hits.Count >= 12)
+        {
+            return;
+        }
+
+        searchCard.Hits.Add(new ResearchFeedHit
+        {
+            Title = string.IsNullOrWhiteSpace(title) ? url : title,
+            Url = url,
+            Snippet = snippet,
+        });
+        OnPropertyChanged(nameof(Feed)); // nudge bindings for HasHits on item if needed
+        FeedUpdated?.Invoke();
     }
 
     private void LoadChoices(JsonElement payload)
@@ -701,15 +1173,17 @@ internal partial class ResearchProgressViewModel : ObservableObject
         }
     }
 
-    private void PushFeed(string kind, string title, string body, string meta = "", bool expand = false)
+    private void PushFeed(string kind, string title, string body, string meta = "", bool expand = false,
+        string url = "")
     {
-        title = TruncateUi(title, 120);
-        body = TruncateUi(body, 220);
-        meta = TruncateUi(meta, 48);
+        title = TruncateUi(title, 160);
+        body = kind is "thinking" or "hit" ? TruncateUi(body, 32000) : TruncateUi(body, 480);
+        meta = TruncateUi(meta, 64);
+        url = TruncateUi(url, 240);
 
-        // Drop exact duplicate spam (same keyword / REST path repeated).
-        var fp = kind + "|" + title + "|" + body;
-        if (fp == _lastFeedFingerprint && kind is "keyword" or "hit")
+        // Drop exact duplicate spam (same search / REST path / hit).
+        var fp = kind + "|" + title + "|" + body + "|" + meta + "|" + url;
+        if (fp == _lastFeedFingerprint && kind is "keyword" or "hit" or "tool")
         {
             return;
         }
@@ -722,9 +1196,10 @@ internal partial class ResearchProgressViewModel : ObservableObject
             Title = title,
             Body = body,
             Meta = meta,
+            Url = url,
             IsExpanded = expand,
         });
-        while (Feed.Count > 60)
+        while (Feed.Count > 120)
         {
             Feed.RemoveAt(0);
         }
@@ -746,6 +1221,36 @@ internal partial class ResearchProgressViewModel : ObservableObject
         el.ValueKind == JsonValueKind.Object && el.TryGetProperty(name, out var v)
             ? v.GetString()
             : null;
+
+    private static bool ReadStreamingFlag(JsonElement el, bool defaultIfMissing)
+    {
+        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty("streaming", out var p))
+        {
+            return defaultIfMissing;
+        }
+
+        return p.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => defaultIfMissing,
+        };
+    }
+
+    private static long ReadInt64(JsonElement el, string name)
+    {
+        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(name, out var p))
+        {
+            return 0;
+        }
+
+        return p.ValueKind switch
+        {
+            JsonValueKind.Number => p.TryGetInt64(out var n) ? n : 0,
+            JsonValueKind.String => long.TryParse(p.GetString(), out var s) ? s : 0,
+            _ => 0,
+        };
+    }
 
     private static string MapStatus(string status) => status switch
     {
@@ -770,7 +1275,7 @@ internal partial class ResearchProgressViewModel : ObservableObject
 
     private void RaiseChanged()
     {
-        OnPropertyChanged(nameof(ShowBusyStage));
+        NotifyStageFlags();
         Changed?.Invoke();
     }
 }

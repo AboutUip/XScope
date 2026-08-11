@@ -85,6 +85,13 @@ XSCOPE_CAPI char* xscope_research_status(xscope_workspace* ws, const char* run_i
 XSCOPE_CAPI char* xscope_research_evidence_list(xscope_workspace* ws, const char* project_id_utf8,
                                                 const char* run_id_utf8);
 
+/// Project knowledge association graph snapshot (nodes + edges JSON).
+XSCOPE_CAPI char* xscope_project_knowledge_graph(xscope_workspace* ws, const char* project_id_utf8);
+
+/// Restore UI for a historical project: latest run + report + events + knowledge graph.
+XSCOPE_CAPI char* xscope_project_research_snapshot(xscope_workspace* ws,
+                                                   const char* project_id_utf8);
+
 #ifdef __cplusplus
 }
 #endif

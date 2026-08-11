@@ -163,6 +163,16 @@ internal static class XScopeNative
         [MarshalAs(UnmanagedType.LPUTF8Str)] string projectIdUtf8,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string runIdUtf8);
 
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr xscope_project_knowledge_graph(
+        IntPtr ws,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string projectIdUtf8);
+
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr xscope_project_research_snapshot(
+        IntPtr ws,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string projectIdUtf8);
+
     public static string ConsumeUtf8(IntPtr ptr)
     {
         if (ptr == IntPtr.Zero)

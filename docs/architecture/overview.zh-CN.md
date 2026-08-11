@@ -27,7 +27,7 @@ XScope 是本地**智能网络调研**工具。用户创建调研**项目**、�
 ## 设计支柱
 
 1. **模块化 SDK** — 能力独立演进，避免上帝对象。
-2. **UI 优先客户端** — Windows WPF + Material Design 3；主壳不用 WebView。
+2. **UI 优先客户端** — Windows WPF + Material Design 3；外观自动/浅色/深色；报告导出（md/pdf/docx）；主壳不用 WebView。
 3. **纯本地数据** — 客户端提供 `data_root`；一个项目 = 一棵目录树 + 加密库。
 4. **可扩展工作区** — 一个根下多项目；schema 从最小集逐步扩展。
 5. **多窗口 / 多进程** — 同项目多次打开时，用稳定锁与 IPC 同步。

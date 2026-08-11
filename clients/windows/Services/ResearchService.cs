@@ -80,6 +80,31 @@ internal sealed class ResearchService : IDisposable
         return list;
     }
 
+    /// <summary>Full knowledge-association graph JSON for a project (nodes + edges).</summary>
+    public string GetKnowledgeGraphJson(string projectId)
+    {
+        using var doc = XScopeNative.ParseJson(
+            XScopeNative.xscope_project_knowledge_graph(_workspace.Handle, projectId));
+        var root = doc.RootElement;
+        EnsureOk(root);
+        if (root.TryGetProperty("graph", out var graph) && graph.ValueKind == JsonValueKind.Object)
+        {
+            return graph.GetRawText();
+        }
+
+        return root.GetRawText();
+    }
+
+    /// <summary>Historical project restore: latest run, report, events, knowledge graph.</summary>
+    public ResearchProjectSnapshot GetProjectSnapshot(string projectId)
+    {
+        using var doc = XScopeNative.ParseJson(
+            XScopeNative.xscope_project_research_snapshot(_workspace.Handle, projectId));
+        var root = doc.RootElement;
+        EnsureOk(root);
+        return ResearchProjectSnapshot.FromJson(root);
+    }
+
     public void Dispose() => _workspace.Dispose();
 
     private static void EnsureOk(JsonElement root)
@@ -157,4 +182,70 @@ internal sealed record ResearchEvidenceItem(
             root.TryGetProperty("snippet", out var sn) ? sn.GetString() ?? "" : "",
             root.TryGetProperty("module_id", out var mid) ? mid.GetString() ?? "" : "",
             root.TryGetProperty("round", out var r) ? r.GetInt32() : 0);
+}
+
+internal sealed class ResearchProjectSnapshot
+{
+    public string ProjectId { get; init; } = "";
+    public string Query { get; init; } = "";
+    public string Summary { get; init; } = "";
+    public string Status { get; init; } = "";
+    public string ModelId { get; init; } = "";
+    public int Precision { get; init; }
+    public string RunId { get; init; } = "";
+    public string ReportMarkdown { get; init; } = "";
+    public bool HasReport { get; init; }
+    public int EventCount { get; init; }
+    public int EvidenceCount { get; init; }
+    public string KnowledgeGraphJson { get; init; } = "";
+    public IReadOnlyList<ResearchPollResult> Events { get; init; } = Array.Empty<ResearchPollResult>();
+
+    public static ResearchProjectSnapshot FromJson(JsonElement root)
+    {
+        var events = new List<ResearchPollResult>();
+        if (root.TryGetProperty("events", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var e in arr.EnumerateArray())
+            {
+                if (!e.TryGetProperty("doc", out var phaseDoc) || phaseDoc.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                events.Add(ResearchPollResult.FromDoc(phaseDoc.Clone()));
+            }
+        }
+
+        var runId = "";
+        if (root.TryGetProperty("run", out var run) && run.ValueKind == JsonValueKind.Object &&
+            run.TryGetProperty("run_id", out var rid))
+        {
+            runId = rid.GetString() ?? "";
+        }
+
+        var kg = "";
+        if (root.TryGetProperty("knowledge_graph", out var graph) && graph.ValueKind == JsonValueKind.Object)
+        {
+            kg = graph.GetRawText();
+        }
+
+        return new ResearchProjectSnapshot
+        {
+            ProjectId = root.TryGetProperty("project_id", out var pid) ? pid.GetString() ?? "" : "",
+            Query = root.TryGetProperty("query", out var q) ? q.GetString() ?? "" : "",
+            Summary = root.TryGetProperty("summary", out var sum) ? sum.GetString() ?? "" : "",
+            Status = root.TryGetProperty("status", out var st) ? st.GetString() ?? "" : "",
+            ModelId = root.TryGetProperty("model_id", out var mid) ? mid.GetString() ?? "" : "",
+            Precision = root.TryGetProperty("precision", out var pr) ? pr.GetInt32() : 1,
+            RunId = runId,
+            ReportMarkdown = root.TryGetProperty("report_markdown", out var md) ? md.GetString() ?? "" : "",
+            HasReport = root.TryGetProperty("has_report", out var hr) && hr.ValueKind == JsonValueKind.True
+                || (root.TryGetProperty("report_markdown", out var md2) &&
+                    !string.IsNullOrWhiteSpace(md2.GetString())),
+            EventCount = root.TryGetProperty("event_count", out var ec) ? ec.GetInt32() : events.Count,
+            EvidenceCount = root.TryGetProperty("evidence_count", out var evc) ? evc.GetInt32() : 0,
+            KnowledgeGraphJson = kg,
+            Events = events,
+        };
+    }
 }

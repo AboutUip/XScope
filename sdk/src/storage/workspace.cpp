@@ -5,6 +5,8 @@
 #include "xscope/providers/github/builtin.hpp"
 #include "xscope/providers/bocha/builtin.hpp"
 #include "xscope/providers/bocha/client.hpp"
+#include "xscope/providers/twtapi/builtin.hpp"
+#include "xscope/providers/twtapi/client.hpp"
 #include "xscope/utils/utils.hpp"
 #include "xscope/xaiop/bridge.hpp"
 
@@ -18,7 +20,7 @@ namespace xscope::storage {
 namespace {
 
 constexpr int kGlobalSchema = 2;
-constexpr int kProjectSchema = 4;
+constexpr int kProjectSchema = 5;
 
 void migrate_global(Database& db, int from, int to) {
     if (from < 1 && to >= 1) {
@@ -160,6 +162,12 @@ void migrate_project(Database& db, int from, int to) {
             CREATE INDEX IF NOT EXISTS idx_memory_entries_branch ON memory_entries(project_id, branch_id);
         )SQL");
     }
+    if (from < 5 && to >= 5) {
+        db.exec(R"SQL(
+            ALTER TABLE knowledge_nodes ADD COLUMN summary TEXT NOT NULL DEFAULT '';
+            ALTER TABLE knowledge_nodes ADD COLUMN weight REAL NOT NULL DEFAULT 0.5;
+        )SQL");
+    }
 }
 
 } // namespace
@@ -235,15 +243,24 @@ void Workspace::ensure_bocha_provider() {
     providers::bocha::ensure_bocha_search_module(skills_, search_registry_);
 }
 
+void Workspace::ensure_twtapi_provider() {
+    providers::twtapi::ensure_twtapi_search_module(skills_, search_registry_);
+}
+
 void Workspace::ensure_search_providers() {
     ensure_github_provider();
     ensure_bocha_provider();
+    ensure_twtapi_provider();
 }
 
 void Workspace::ensure_ai_providers() { ai::ensure_builtin_ai_providers(ai_registry_); }
 
 providers::bocha::Client Workspace::bocha_client() {
     return providers::bocha::Client(http_, [this]() { return get_secret("bocha.default"); });
+}
+
+providers::twtapi::Client Workspace::twtapi_client() {
+    return providers::twtapi::Client(http_, [this]() { return get_secret("twtapi.default"); });
 }
 
 mcp::SearchToolService Workspace::search_tools(bool require_secret_present) {

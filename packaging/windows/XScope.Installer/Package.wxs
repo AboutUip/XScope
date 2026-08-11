@@ -1,0 +1,127 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <!-- Stable across releases; ProductCode regenerates each build. -->
+  <?define UpgradeCode = "8F3C2A1B-9E4D-4F6A-B2C8-1D5E7A9F0B3C" ?>
+  <?define ProductVersion = "$(var.ProductVersion)" ?>
+
+  <Package Name="XScope"
+           Manufacturer="小萱baibai"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="$(var.UpgradeCode)"
+           Language="1033"
+           Codepage="65001"
+           Scope="perMachine"
+           Compressed="yes">
+    <SummaryInformation Description="XScope — local-first intelligent network research (MIT License)"
+                        Manufacturer="小萱baibai" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of XScope is already installed."
+                  Schedule="afterInstallInitialize" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="AppIcon" SourceFile="..\..\..\clients\windows\Assets\xscope.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://opensource.org/licenses/MIT" />
+    <Property Id="ARPURLINFOABOUT" Value="https://opensource.org/licenses/MIT" />
+    <Property Id="ARPCOMMENTS" Value="XScope is licensed under the MIT License. Copyright (c) 2026 小萱baibai." />
+
+    <!-- Finish page: optional "Launch XScope" (checked by default). -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch XScope" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+
+    <!-- Graphical wizard: welcome → MIT EULA → folder → ready → progress → finish. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <CustomAction Id="LaunchApplication"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="XScope.exe"
+                  Execute="immediate"
+                  Impersonate="yes"
+                  Return="asyncNoWait" />
+
+    <UI>
+      <Publish Dialog="ExitDialog"
+               Control="Finish"
+               Event="DoAction"
+               Value="LaunchApplication"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed"
+               Order="999" />
+    </UI>
+
+    <Feature Id="ProductFeature"
+             Title="XScope"
+             Description="XScope application files (MIT License)"
+             Level="1"
+             ConfigurableDirectory="INSTALLFOLDER">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+      <ComponentRef Id="LicenseFile" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="XScope" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="XScope" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.PublishDir)**">
+        <Exclude Files="!(bindpath.PublishDir)**\*.pdb" />
+        <Exclude Files="!(bindpath.PublishDir)**\*.xml" />
+      </Files>
+    </ComponentGroup>
+
+    <!-- Ship plain-text MIT LICENSE next to the app. -->
+    <Component Id="LicenseFile"
+               Directory="INSTALLFOLDER"
+               Guid="C1D2E3F4-5A6B-7C8D-9E0F-1A2B3C4D5E6F">
+      <File Id="MitLicenseTxt"
+            Source="..\..\..\LICENSE"
+            Name="LICENSE.txt"
+            KeyPath="yes" />
+    </Component>
+
+    <Component Id="StartMenuShortcut"
+               Directory="ApplicationProgramsFolder"
+               Guid="B7E4D2C1-5A8F-4E3B-9C0D-2F1A6B8E4D7C">
+      <Shortcut Id="XScopeStartMenu"
+                Name="XScope"
+                Description="XScope research toolkit (MIT)"
+                Target="[INSTALLFOLDER]XScope.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="AppIcon" />
+      <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\XScope"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcut"
+               Directory="DesktopFolder"
+               Guid="D8E5F3A2-6B9C-4D1E-8F0A-3C2B1A9E7D5C">
+      <Shortcut Id="XScopeDesktop"
+                Name="XScope"
+                Description="XScope research toolkit (MIT)"
+                Target="[INSTALLFOLDER]XScope.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="AppIcon" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\XScope"
+                     Name="DesktopShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+  </Fragment>
+</Wix>

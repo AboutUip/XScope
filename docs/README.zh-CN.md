@@ -30,3 +30,7 @@
 ### 客户端
 
 - [Windows 客户端](client/windows.zh-CN.md)
+
+### 打包
+
+- [Windows MSI](packaging/windows.zh-CN.md)

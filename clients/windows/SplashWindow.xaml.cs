@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
+using XScope.Services;
 
 namespace XScope;
 
@@ -27,8 +28,13 @@ public partial class SplashWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        ApplySplashTheme();
         Focus();
         LayoutSlots();
+
+        // Start Helix/D3D warmup immediately — splash animation covers the cost.
+        HelixGpuWarmup.Begin(Dispatcher);
+
         if (SystemParameters.ClientAreaAnimation)
         {
             PlayIntro();
@@ -37,6 +43,25 @@ public partial class SplashWindow : Window
         {
             ShowFinalInstant();
             ScheduleFinish(TimeSpan.FromMilliseconds(450));
+        }
+    }
+
+    private void ApplySplashTheme()
+    {
+        var dark = ThemeService.IsDarkEffective;
+        if (LightWash is not null)
+        {
+            LightWash.Visibility = dark ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        if (DarkWash is not null)
+        {
+            DarkWash.Visibility = dark ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        if (LightVeil is not null)
+        {
+            LightVeil.Visibility = dark ? Visibility.Collapsed : Visibility.Visible;
         }
     }
 
@@ -812,6 +837,8 @@ public partial class SplashWindow : Window
             }
             // Construct + parse XAML now; Show happens in Finish().
             _warmMain = new MainWindow();
+            // Second nudge if first idle pass was skipped / still running.
+            HelixGpuWarmup.Begin(Dispatcher);
         };
         timer.Start();
     }

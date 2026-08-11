@@ -11,15 +11,18 @@ enum class PrecisionKind {
     Maximum = 3,
 };
 
-/// Precision limits **depth along one investigation direction**, not breadth.
+/// Precision is one knob: how thorough the investigation should be.
+/// Lower tiers trade cost for speed; Maximum turns cost off and prioritizes accuracy.
 struct ResearchBudget {
     PrecisionKind kind = PrecisionKind::Normal;
-    /// Max depth layers per direction. -1 = unlimited (Maximum).
+    /// Max depth layers per direction. -1 = unlimited (Maximum only).
     int max_depth_layers = 5;
-    /// Soft cap on concurrent/total breadth directions (engine safety, not user precision).
+    /// Soft cap on investigation directions (breadth). -1 = unlimited (Maximum).
     int max_directions = 8;
     /// Hits / REST richness per deepen step.
     int items_per_layer = 10;
+    /// When true (Maximum), the model must ignore cost/time and dig until accuracy is enough.
+    bool ignore_cost = false;
 };
 
 PrecisionKind precision_from_int(int v) noexcept;

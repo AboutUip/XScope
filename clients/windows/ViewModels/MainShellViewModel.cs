@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
@@ -85,6 +86,8 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
     private readonly ResearchService _researchService = new();
     private bool _suppressSelection;
     private bool _suppressAiSelection;
+    private string _sidePanelSyncedProject = "";
+    private string _sidePanelSyncedGraph = "";
 
     public ObservableCollection<ProjectListItem> Projects { get; } = [];
     public ObservableCollection<SearchProviderOption> UsableProviders { get; } = [];
@@ -92,6 +95,7 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
     public ObservableCollection<PrecisionOption> Precisions { get; } = [];
 
     public ResearchProgressViewModel Research { get; }
+    public ResearchSidePanelViewModel SidePanel { get; }
 
     [ObservableProperty]
     private ProjectListItem? _selectedProject;
@@ -139,6 +143,31 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
 
     public bool IsResearch => !IsHome;
 
+    public bool ShowResearchSidePanel => Research.HasReport;
+
+    /// <summary>Settings stays visible when the rail is collapsed; expanded rail covers it.</summary>
+    public bool ShowSettingsButton => !ShowResearchSidePanel || !SidePanel.IsExpanded;
+
+    /// <summary>When the collapsed rail is visible, push the gear left so it is not clipped.</summary>
+    public Thickness SettingsButtonMargin =>
+        ShowResearchSidePanel && !SidePanel.IsExpanded
+            ? new Thickness(0, 16, 64, 0)
+            : new Thickness(0, 16, 20, 0);
+
+    /// <summary>
+    /// Research scroll gutter: keep the thin scrollbar clear of the insights rail.
+    /// Extra right inset when the side panel is present.
+    /// </summary>
+    public Thickness ResearchWorkspaceMargin =>
+        ShowResearchSidePanel
+            ? new Thickness(48, 40, 20, 40)
+            : new Thickness(48, 40, 40, 40);
+
+    public Thickness ResearchFollowUpMargin =>
+        ShowResearchSidePanel
+            ? new Thickness(48, 0, 20, 16)
+            : new Thickness(48, 0, 48, 16);
+
     public string ActiveProviderLabel => SelectedProvider?.DisplayName ?? "—";
     public string ActiveModelLabel => SelectedModel?.DisplayName ?? "—";
     public string ActivePrecisionLabel => SelectedPrecision?.DisplayName ?? "—";
@@ -157,7 +186,9 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
     public MainShellViewModel()
     {
         Research = new ResearchProgressViewModel(_researchService);
+        SidePanel = new ResearchSidePanelViewModel(_researchService);
         Research.Changed += OnResearchChanged;
+        SidePanel.ExpandedChanged += OnSidePanelExpandedChanged;
         var v = typeof(App).Assembly.GetName().Version;
         VersionLabel = v is null ? "v0.1.0" : $"v{v.Major}.{v.Minor}.{v.Build}";
         Loc.Instance.PropertyChanged += OnLocChanged;
@@ -168,6 +199,7 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
     }
 
     public event Action? OpenSettingsRequested;
+    public event Action? ExportReportRequested;
     public event Func<string, string?, Task<string?>>? PromptRenameRequested;
     public event Func<string, Task<bool>>? ConfirmDeleteRequested;
 
@@ -230,6 +262,17 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenSettings() => OpenSettingsRequested?.Invoke();
 
+    [RelayCommand]
+    private void ExportReport()
+    {
+        if (!Research.HasReport || string.IsNullOrWhiteSpace(Research.ReportMarkdown))
+        {
+            return;
+        }
+
+        ExportReportRequested?.Invoke();
+    }
+
     /// <summary>New project: return to ephemeral home — do not create a library row.</summary>
     [RelayCommand]
     private void NewProject() => ResetToHome();
@@ -255,21 +298,27 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
         try
         {
             string projectId;
+            var isFollowUp = Research.ShowFollowUpCompose;
+
             if (IsHome || SelectedProject is null)
             {
                 var title = ProjectsService.TitleFromSearch(q);
                 var created = await Task.Run(() => _projects.Create(title));
                 await ReloadProjectsAsync(created.Id);
-                EnterResearch(created.Id, created.Title, q);
+                EnterResearch(created.Id, created.Title, q, loadSnapshot: false);
                 projectId = created.Id;
             }
             else
             {
                 ResearchQuery = q;
                 projectId = SelectedProject.Id;
-                StatusText = Loc.Instance.T("main.research.queued");
+                StatusText = isFollowUp
+                    ? Loc.Instance.T("main.research.followup")
+                    : Loc.Instance.T("main.research.queued");
             }
 
+            // Query stays as the user typed it. Prior report / need / dialogue are NOT pasted —
+            // the model must pull project memory & knowledge via MCP when needed.
             NotifyActiveAiLabels();
             StatusText = Loc.Instance.T("research.status.starting");
             await Research.StartAsync(
@@ -277,6 +326,7 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
                 q,
                 SelectedModel.Id,
                 (int)ActivePrecisionKind);
+            SearchText = "";
             StatusText = Research.StatusLabel;
         }
         catch (Exception ex)
@@ -380,7 +430,7 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        EnterResearch(value.Id, value.Title, ResearchQuery);
+        _ = EnterResearchAsync(value.Id, value.Title);
     }
 
     partial void OnIsHomeChanged(bool value)
@@ -575,14 +625,23 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
         UpdateAiOptionsHint();
     }
 
-    private void EnterResearch(string id, string title, string query)
+    private void EnterResearch(string id, string title, string query, bool loadSnapshot = true)
+    {
+        _ = EnterResearchAsync(id, title, query, loadSnapshot);
+    }
+
+    private async Task EnterResearchAsync(string id, string title, string? queryHint = null,
+        bool loadSnapshot = true)
     {
         IsHome = false;
         ActiveProjectTitle = title;
-        if (!string.IsNullOrWhiteSpace(query))
+        if (!string.IsNullOrWhiteSpace(queryHint))
         {
-            ResearchQuery = query.Trim();
-            SearchText = query.Trim();
+            ResearchQuery = queryHint.Trim();
+            if (!loadSnapshot)
+            {
+                SearchText = queryHint.Trim();
+            }
         }
 
         StatusText = Loc.Instance.T("main.research.ready");
@@ -590,6 +649,100 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
         _suppressSelection = true;
         SelectedProject = Projects.FirstOrDefault(p => p.Id == id);
         _suppressSelection = false;
+        NotifyActiveAiLabels();
+
+        if (!loadSnapshot)
+        {
+            return;
+        }
+
+        try
+        {
+            var snap = await Research.LoadProjectAsync(id);
+            SearchText = "";
+            ApplyRestoredRunAi(snap.ModelId, snap.Precision);
+
+            if (Research.HasReport || Research.Feed.Count > 0)
+            {
+                StatusText = Research.StatusLabel;
+            }
+
+            OnPropertyChanged(nameof(ShowResearchSidePanel));
+            OnPropertyChanged(nameof(ShowSettingsButton));
+            OnPropertyChanged(nameof(SettingsButtonMargin));
+            OnPropertyChanged(nameof(ResearchWorkspaceMargin));
+            OnPropertyChanged(nameof(ResearchFollowUpMargin));
+            if (Research.HasReport && !string.IsNullOrWhiteSpace(Research.ProjectId))
+            {
+                var pid = Research.ProjectId;
+                var graph = Research.KnowledgeGraphJson;
+                // Defer Helix / KG hydrate until after history feed settles.
+                _ = System.Windows.Application.Current.Dispatcher.InvokeAsync(
+                    async () => await SidePanel.EnsureLoadedAsync(pid, graph),
+                    System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            }
+            else
+            {
+                SidePanel.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText = ex.Message;
+        }
+    }
+
+    /// <summary>Restore model + precision from a historical run without writing prefs.</summary>
+    private void ApplyRestoredRunAi(string modelId, int precision)
+    {
+        PrecisionIndex = Math.Clamp(precision, 0, 3);
+
+        if (string.IsNullOrWhiteSpace(modelId) || UsableProviders.Count == 0)
+        {
+            NotifyActiveAiLabels();
+            return;
+        }
+
+        static bool ModelMatches(AiModelInfo m, string id) =>
+            string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(m.Model, id, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(m.Name, id, StringComparison.OrdinalIgnoreCase);
+
+        var provider = UsableProviders.FirstOrDefault(p => p.Models.Any(m => ModelMatches(m, modelId)));
+        if (provider is null)
+        {
+            // Fallback: provider id prefix, e.g. kimi-k3 → kimi
+            var dash = modelId.IndexOf('-');
+            if (dash > 0)
+            {
+                var prefix = modelId[..dash];
+                provider = UsableProviders.FirstOrDefault(p =>
+                    string.Equals(p.Id, prefix, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        if (provider is null)
+        {
+            NotifyActiveAiLabels();
+            return;
+        }
+
+        var was = _suppressAiSelection;
+        _suppressAiSelection = true;
+        try
+        {
+            if (!ReferenceEquals(SelectedProvider, provider))
+            {
+                SelectedProvider = provider;
+            }
+
+            ApplyModelsForProvider(provider, preferModelId: modelId);
+        }
+        finally
+        {
+            _suppressAiSelection = was;
+        }
+
         NotifyActiveAiLabels();
     }
 
@@ -638,11 +791,45 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
         {
             StatusText = Research.StatusLabel;
         }
+
+        OnPropertyChanged(nameof(ShowResearchSidePanel));
+        OnPropertyChanged(nameof(ShowSettingsButton));
+        OnPropertyChanged(nameof(SettingsButtonMargin));
+        OnPropertyChanged(nameof(ResearchWorkspaceMargin));
+        OnPropertyChanged(nameof(ResearchFollowUpMargin));
+        if (Research.HasReport && !string.IsNullOrWhiteSpace(Research.ProjectId))
+        {
+            var graph = Research.KnowledgeGraphJson ?? "";
+            // Always refresh after report/final so seeded graphs appear even if earlier cache was empty.
+            if (!string.Equals(_sidePanelSyncedProject, Research.ProjectId, StringComparison.Ordinal) ||
+                !string.Equals(_sidePanelSyncedGraph, graph, StringComparison.Ordinal) ||
+                SidePanel.NodeCount == 0)
+            {
+                _sidePanelSyncedProject = Research.ProjectId;
+                _sidePanelSyncedGraph = graph;
+                _ = SidePanel.EnsureLoadedAsync(Research.ProjectId, graph);
+            }
+        }
+        else if (!Research.HasReport)
+        {
+            _sidePanelSyncedProject = "";
+            _sidePanelSyncedGraph = "";
+            SidePanel.Clear();
+        }
+    }
+
+    private void OnSidePanelExpandedChanged()
+    {
+        OnPropertyChanged(nameof(ShowSettingsButton));
+        OnPropertyChanged(nameof(SettingsButtonMargin));
+        OnPropertyChanged(nameof(ResearchWorkspaceMargin));
+        OnPropertyChanged(nameof(ResearchFollowUpMargin));
     }
 
     private void OnLocChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         OnPropertyChanged(nameof(L));
+        SidePanel.NotifyLoc();
         foreach (var p in Projects)
         {
             p.NotifyLoc();
@@ -657,6 +844,7 @@ internal partial class MainShellViewModel : ObservableObject, IDisposable
     {
         Loc.Instance.PropertyChanged -= OnLocChanged;
         Research.Changed -= OnResearchChanged;
+        SidePanel.ExpandedChanged -= OnSidePanelExpandedChanged;
         _ = Research.StopPollingAsync(cancelRun: true);
         _projects.Dispose();
         _ai.Dispose();

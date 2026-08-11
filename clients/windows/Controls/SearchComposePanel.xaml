@@ -9,8 +9,9 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="8,4" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Foreground" Value="#5F6368" />
+            <Setter Property="Foreground" Value="{DynamicResource XScopeTextSecondary}" />
             <Setter Property="FontSize" Value="12" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
@@ -23,11 +24,9 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeHover}" />
                             </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E8F0FE" />
-                            </Trigger>
+                            <!-- Keep checked transparent: AccentSoft/Hover blocks create vertical banding inside the pill chrome. -->
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45" />
                             </Trigger>
@@ -54,7 +53,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource XScopeHover}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -63,21 +62,27 @@
         </Style>
     </UserControl.Resources>
 
-    <StackPanel>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <Border x:Name="SearchChrome"
+                Grid.Row="0"
                 MinHeight="52"
                 MaxHeight="160"
+                HorizontalAlignment="Stretch"
                 CornerRadius="26"
-                Background="#FFFFFF"
-                BorderBrush="#DFE1E5"
-                BorderThickness="1"
-                Padding="4,6,6,6">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="8"
-                                  ShadowDepth="1"
-                                  Opacity="0.12"
-                                  Color="#202124" />
-            </Border.Effect>
+                Background="{DynamicResource XScopeBorder}"
+                Padding="1"
+                UseLayoutRounding="True"
+                SnapsToDevicePixels="False">
+            <!-- Stroke borders + CornerRadius anti-alias to near-black fringes in dark theme.
+                 Outer fill = edge color; inner fill = chrome (no BorderThickness). -->
+            <Border x:Name="SearchChromeFill"
+                    CornerRadius="25"
+                    Background="{DynamicResource XScopeInputBg}"
+                    Padding="4,6,6,6">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -91,7 +96,7 @@
                                          Height="22"
                                          VerticalAlignment="Top"
                                          Margin="12,10,4,0"
-                                         Foreground="#9AA0A6" />
+                                         Foreground="{DynamicResource XScopeTextMuted}" />
 
                 <TextBox x:Name="SearchBox"
                          Grid.Column="1"
@@ -104,10 +109,11 @@
                          VerticalScrollBarVisibility="Auto"
                          VerticalContentAlignment="Center"
                          Padding="4,6,8,6"
+                         FocusVisualStyle="{x:Null}"
                          materialDesign:HintAssist.Hint="{Binding L.MainSearchHint}"
                          materialDesign:HintAssist.IsFloating="False"
                          materialDesign:TextFieldAssist.DecorationVisibility="Collapsed"
-                         CaretBrush="#1A73E8"
+                         CaretBrush="{DynamicResource XScopeAccent}"
                          PreviewKeyDown="OnSearchPreviewKeyDown"
                          TextChanged="OnSearchTextChanged" />
 
@@ -139,7 +145,7 @@
                                                          Height="20"
                                                          HorizontalAlignment="Center"
                                                          VerticalAlignment="Center"
-                                                         Foreground="#1A73E8"
+                                                         Foreground="{DynamicResource XScopeAccent}"
                                                          Visibility="{Binding SelectedProviderHasLogo, Converter={StaticResource XScopeInvertBoolToVis}}" />
                             </Grid>
                         </ToggleButton>
@@ -150,10 +156,10 @@
                                AllowsTransparency="True"
                                PopupAnimation="Fade"
                                Closed="OnProviderPopupClosed">
-                            <Border Background="#FFFFFF"
+                            <Border Background="{DynamicResource XScopeInputBg}"
                                     CornerRadius="12"
                                     Padding="6"
-                                    BorderBrush="#E8EAED"
+                                    BorderBrush="{DynamicResource XScopeBorder}"
                                     BorderThickness="1"
                                     MinWidth="188"
                                     Margin="0,6,0,0">
@@ -161,7 +167,7 @@
                                     <DropShadowEffect BlurRadius="16"
                                                       ShadowDepth="2"
                                                       Opacity="0.18"
-                                                      Color="#202124" />
+                                                      Color="#000000" />
                                 </Border.Effect>
                                 <ItemsControl ItemsSource="{Binding UsableProviders}">
                                     <ItemsControl.ItemTemplate>
@@ -187,13 +193,13 @@
                                                                              Width="20"
                                                                              Height="20"
                                                                              VerticalAlignment="Center"
-                                                                             Foreground="#1A73E8"
+                                                                             Foreground="{DynamicResource XScopeAccent}"
                                                                              Margin="0,0,10,0"
                                                                              Visibility="{Binding HasLogo, Converter={StaticResource XScopeInvertBoolToVis}}" />
                                                     <TextBlock Text="{Binding DisplayName}"
                                                                VerticalAlignment="Center"
                                                                FontSize="13"
-                                                               Foreground="#202124" />
+                                                               Foreground="{DynamicResource XScopeTextPrimary}" />
                                                 </DockPanel>
                                             </Button>
                                         </DataTemplate>
@@ -216,13 +222,13 @@
                                            MaxWidth="140"
                                            TextTrimming="CharacterEllipsis"
                                            VerticalAlignment="Center"
-                                           Foreground="#3C4043" />
+                                           Foreground="{DynamicResource XScopeTextPrimary}" />
                                 <materialDesign:PackIcon Kind="MenuDown"
                                                          Width="16"
                                                          Height="16"
                                                          VerticalAlignment="Center"
                                                          Margin="2,0,0,0"
-                                                         Foreground="#80868B" />
+                                                         Foreground="{DynamicResource XScopeTextMuted}" />
                             </StackPanel>
                         </ToggleButton>
                         <Popup x:Name="ModelPopup"
@@ -232,10 +238,10 @@
                                AllowsTransparency="True"
                                PopupAnimation="Fade"
                                Closed="OnModelPopupClosed">
-                            <Border Background="#FFFFFF"
+                            <Border Background="{DynamicResource XScopeInputBg}"
                                     CornerRadius="12"
                                     Padding="6"
-                                    BorderBrush="#E8EAED"
+                                    BorderBrush="{DynamicResource XScopeBorder}"
                                     BorderThickness="1"
                                     MinWidth="200"
                                     MaxHeight="280"
@@ -244,7 +250,7 @@
                                     <DropShadowEffect BlurRadius="16"
                                                       ShadowDepth="2"
                                                       Opacity="0.18"
-                                                      Color="#202124" />
+                                                      Color="#000000" />
                                 </Border.Effect>
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <ItemsControl ItemsSource="{Binding UsableModels}">
@@ -255,7 +261,7 @@
                                                         Tag="{Binding}">
                                                     <TextBlock Text="{Binding DisplayName}"
                                                                FontSize="13"
-                                                               Foreground="#202124"
+                                                               Foreground="{DynamicResource XScopeTextPrimary}"
                                                                TextWrapping="Wrap" />
                                                 </Button>
                                             </DataTemplate>
@@ -278,7 +284,7 @@
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
                                     <Border x:Name="PrecisionChipBd"
-                                            Background="#F1F3F4"
+                                            Background="Transparent"
                                             CornerRadius="14"
                                             Padding="{TemplateBinding Padding}">
                                         <ContentPresenter HorizontalAlignment="Center"
@@ -290,43 +296,43 @@
                                 <TextBlock x:Name="PrecisionChipLabel"
                                            Text="{Binding ActivePrecisionLabel}"
                                            VerticalAlignment="Center"
-                                           Foreground="#3C4043" />
+                                           Foreground="{DynamicResource XScopeTextPrimary}" />
                                 <materialDesign:PackIcon x:Name="PrecisionChipChevron"
                                                          Kind="MenuDown"
                                                          Width="16"
                                                          Height="16"
                                                          VerticalAlignment="Center"
                                                          Margin="2,0,0,0"
-                                                         Foreground="#80868B" />
+                                                         Foreground="{DynamicResource XScopeTextMuted}" />
                             </StackPanel>
                         </ToggleButton>
                         <Popup x:Name="PrecisionPopup"
                                PlacementTarget="{Binding ElementName=PrecisionToggle}"
-                               Placement="Bottom"
-                               HorizontalOffset="-200"
+                               Placement="Custom"
                                StaysOpen="False"
                                AllowsTransparency="True"
                                PopupAnimation="Fade"
                                Closed="OnPrecisionPopupClosed"
                                Opened="OnPrecisionPopupOpened">
-                            <Grid Width="320" Margin="0,6,0,0">
+                            <Grid Width="320">
                                 <!-- Kept collapsed: names referenced by code-behind for safe no-op. -->
                                 <Border x:Name="PrecisionEdgeGlow" Visibility="Collapsed" />
                                 <Border x:Name="PrecisionWash" Visibility="Collapsed" />
                                 <Border x:Name="PrecisionAccentBar" Visibility="Collapsed" />
 
                                 <Border x:Name="PrecisionPopupRoot"
-                                        Background="#FFFFFF"
+                                        Background="{DynamicResource XScopeInputBg}"
                                         CornerRadius="12"
-                                        BorderBrush="#E8EAED"
+                                        BorderBrush="{DynamicResource XScopeBorder}"
                                         BorderThickness="1"
-                                        ClipToBounds="True">
+                                        ClipToBounds="True"
+                                        Margin="0,4">
                                     <Border.Effect>
                                         <DropShadowEffect x:Name="PrecisionPopupShadow"
                                                           BlurRadius="12"
                                                           ShadowDepth="1"
                                                           Opacity="0.14"
-                                                          Color="#202124" />
+                                                          Color="#000000" />
                                     </Border.Effect>
                                     <StackPanel Margin="18,14,18,16">
                                             <DockPanel Margin="0,0,0,14">
@@ -335,12 +341,12 @@
                                                            Text="{Binding L.MainSearchPrecision}"
                                                            FontSize="12"
                                                            FontWeight="SemiBold"
-                                                           Foreground="#5F6368" />
+                                                           Foreground="{DynamicResource XScopeTextSecondary}" />
                                                 <TextBlock x:Name="PrecisionPopupValue"
                                                            Text="{Binding ActivePrecisionLabel}"
                                                            FontSize="12"
                                                            FontWeight="SemiBold"
-                                                           Foreground="#202124"
+                                                           Foreground="{DynamicResource XScopeTextPrimary}"
                                                            HorizontalAlignment="Right" />
                                             </DockPanel>
 
@@ -362,26 +368,26 @@
                                                     <TextBlock x:Name="LabelQuick"
                                                                Text="{Binding L.MainPrecisionQuick}"
                                                                FontSize="11"
-                                                               Foreground="#5F6368" />
+                                                               Foreground="{DynamicResource XScopeTextSecondary}" />
                                                     <TextBlock x:Name="LabelNormal"
                                                                Text="{Binding L.MainPrecisionNormal}"
                                                                FontSize="11"
-                                                               Foreground="#5F6368" />
+                                                               Foreground="{DynamicResource XScopeTextSecondary}" />
                                                     <TextBlock x:Name="LabelDeep"
                                                                Text="{Binding L.MainPrecisionDeep}"
                                                                FontSize="11"
-                                                               Foreground="#5F6368" />
+                                                               Foreground="{DynamicResource XScopeTextSecondary}" />
                                                     <TextBlock x:Name="LabelMax"
                                                                Text="{Binding L.MainPrecisionMax}"
                                                                FontSize="11"
-                                                               Foreground="#5F6368" />
+                                                               Foreground="{DynamicResource XScopeTextSecondary}" />
                                                 </Canvas>
                                             </Grid>
 
                                         <TextBlock x:Name="PrecisionHintLine"
                                                    Margin="0,10,0,0"
                                                    FontSize="12"
-                                                   Foreground="#5F6368"
+                                                   Foreground="{DynamicResource XScopeTextSecondary}"
                                                    TextWrapping="Wrap">
                                             <Run Text="{Binding PrecisionTokenHint, Mode=OneWay}" />
                                             <Run Text="  ·  " />
@@ -391,7 +397,7 @@
                                                    Text="{Binding PrecisionDetail}"
                                                    Margin="0,4,0,0"
                                                    FontSize="12"
-                                                   Foreground="#80868B"
+                                                   Foreground="{DynamicResource XScopeTextMuted}"
                                                    TextWrapping="Wrap" />
                                         </StackPanel>
                                 </Border>
@@ -400,14 +406,16 @@
                     </Grid>
                 </StackPanel>
             </Grid>
+            </Border>
         </Border>
 
-        <TextBlock Text="{Binding AiOptionsHint}"
+        <TextBlock Grid.Row="1"
+                   Text="{Binding AiOptionsHint}"
                    Margin="0,10,0,0"
                    FontSize="12"
                    Foreground="#E37400"
                    TextWrapping="Wrap"
                    HorizontalAlignment="Right"
                    Visibility="{Binding ShowAiOptionsHint, Converter={StaticResource XScopeBoolToVis}}" />
-    </StackPanel>
+    </Grid>
 </UserControl>

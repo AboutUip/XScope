@@ -8,6 +8,16 @@
 namespace xscope::research {
 namespace {
 
+double clamp_weight(double w) {
+    if (w < 0.0) {
+        return 0.5;
+    }
+    if (w > 1.0) {
+        return 1.0;
+    }
+    return w;
+}
+
 KnowledgeNode node_from_row(const storage::Database::Row& row) {
     KnowledgeNode n;
     n.id = row.size() > 0 ? row[0].value_or("") : "";
@@ -15,13 +25,19 @@ KnowledgeNode node_from_row(const storage::Database::Row& row) {
     n.run_id = row.size() > 2 ? row[2].value_or("") : "";
     n.title = row.size() > 3 ? row[3].value_or("") : "";
     n.content = row.size() > 4 ? row[4].value_or("") : "";
-    n.kind = row.size() > 5 ? row[5].value_or("") : "";
-    n.direction_id = row.size() > 6 ? row[6].value_or("") : "";
-    n.depth_layer = row.size() > 7 && row[7] ? static_cast<int>(std::stoll(*row[7])) : 0;
-    n.valid = row.size() > 8 && row[8] ? (std::stoll(*row[8]) != 0) : true;
-    n.meta_json = row.size() > 9 ? row[9].value_or("") : "";
-    n.created_at = row.size() > 10 && row[10] ? std::stoll(*row[10]) : 0;
-    n.updated_at = row.size() > 11 && row[11] ? std::stoll(*row[11]) : 0;
+    n.summary = row.size() > 5 ? row[5].value_or("") : "";
+    try {
+        n.weight = row.size() > 6 && row[6] ? std::stod(*row[6]) : 0.5;
+    } catch (...) {
+        n.weight = 0.5;
+    }
+    n.kind = row.size() > 7 ? row[7].value_or("") : "";
+    n.direction_id = row.size() > 8 ? row[8].value_or("") : "";
+    n.depth_layer = row.size() > 9 && row[9] ? static_cast<int>(std::stoll(*row[9])) : 0;
+    n.valid = row.size() > 10 && row[10] ? (std::stoll(*row[10]) != 0) : true;
+    n.meta_json = row.size() > 11 ? row[11].value_or("") : "";
+    n.created_at = row.size() > 12 && row[12] ? std::stoll(*row[12]) : 0;
+    n.updated_at = row.size() > 13 && row[13] ? std::stoll(*row[13]) : 0;
     return n;
 }
 
@@ -54,11 +70,14 @@ void KnowledgeGraphStore::upsert_node(const KnowledgeNode& node) {
     const auto now = utils::now_unix_seconds();
     const auto created = node.created_at > 0 ? node.created_at : now;
     const auto updated = node.updated_at > 0 ? node.updated_at : now;
+    const double weight = clamp_weight(node.weight);
     db_->execute(
-        "INSERT INTO knowledge_nodes(id, project_id, run_id, title, content, kind, direction_id, "
-        "depth_layer, valid, meta_json, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) "
+        "INSERT INTO knowledge_nodes(id, project_id, run_id, title, content, summary, weight, kind, "
+        "direction_id, depth_layer, valid, meta_json, created_at, updated_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(id) DO UPDATE SET "
-        "run_id=excluded.run_id, title=excluded.title, content=excluded.content, kind=excluded.kind, "
+        "run_id=excluded.run_id, title=excluded.title, content=excluded.content, "
+        "summary=excluded.summary, weight=excluded.weight, kind=excluded.kind, "
         "direction_id=excluded.direction_id, depth_layer=excluded.depth_layer, valid=excluded.valid, "
         "meta_json=excluded.meta_json, updated_at=excluded.updated_at",
         [&](sqlite3_stmt* stmt) {
@@ -67,13 +86,15 @@ void KnowledgeGraphStore::upsert_node(const KnowledgeNode& node) {
             storage::Database::bind_text(stmt, 3, node.run_id);
             storage::Database::bind_text(stmt, 4, node.title);
             storage::Database::bind_text(stmt, 5, node.content);
-            storage::Database::bind_text(stmt, 6, node.kind);
-            storage::Database::bind_text(stmt, 7, node.direction_id);
-            storage::Database::bind_int64(stmt, 8, node.depth_layer);
-            storage::Database::bind_int64(stmt, 9, node.valid ? 1 : 0);
-            storage::Database::bind_text(stmt, 10, node.meta_json);
-            storage::Database::bind_int64(stmt, 11, created);
-            storage::Database::bind_int64(stmt, 12, updated);
+            storage::Database::bind_text(stmt, 6, node.summary);
+            storage::Database::bind_double(stmt, 7, weight);
+            storage::Database::bind_text(stmt, 8, node.kind);
+            storage::Database::bind_text(stmt, 9, node.direction_id);
+            storage::Database::bind_int64(stmt, 10, node.depth_layer);
+            storage::Database::bind_int64(stmt, 11, node.valid ? 1 : 0);
+            storage::Database::bind_text(stmt, 12, node.meta_json);
+            storage::Database::bind_int64(stmt, 13, created);
+            storage::Database::bind_int64(stmt, 14, updated);
         });
 }
 
@@ -88,6 +109,12 @@ bool KnowledgeGraphStore::update_node(const KnowledgeNode& node) {
     }
     if (!node.content.empty()) {
         n.content = node.content;
+    }
+    if (!node.summary.empty()) {
+        n.summary = node.summary;
+    }
+    if (node.weight >= 0.0) {
+        n.weight = clamp_weight(node.weight);
     }
     if (!node.kind.empty()) {
         n.kind = node.kind;
@@ -134,8 +161,9 @@ std::optional<KnowledgeNode> KnowledgeGraphStore::get_node(const std::string& pr
         return std::nullopt;
     }
     auto rows = db_->query(
-        "SELECT id, project_id, run_id, title, content, kind, direction_id, depth_layer, valid, "
-        "meta_json, created_at, updated_at FROM knowledge_nodes WHERE project_id=? AND id=? LIMIT 1",
+        "SELECT id, project_id, run_id, title, content, summary, weight, kind, direction_id, "
+        "depth_layer, valid, meta_json, created_at, updated_at FROM knowledge_nodes "
+        "WHERE project_id=? AND id=? LIMIT 1",
         [&](sqlite3_stmt* stmt) {
             storage::Database::bind_text(stmt, 1, project_id);
             storage::Database::bind_text(stmt, 2, node_id);
@@ -152,8 +180,9 @@ std::vector<KnowledgeNode> KnowledgeGraphStore::list_nodes(const std::string& pr
         return out;
     }
     auto rows = db_->query(
-        "SELECT id, project_id, run_id, title, content, kind, direction_id, depth_layer, valid, "
-        "meta_json, created_at, updated_at FROM knowledge_nodes WHERE project_id=? ORDER BY updated_at DESC",
+        "SELECT id, project_id, run_id, title, content, summary, weight, kind, direction_id, "
+        "depth_layer, valid, meta_json, created_at, updated_at FROM knowledge_nodes "
+        "WHERE project_id=? ORDER BY updated_at DESC",
         [&](sqlite3_stmt* stmt) { storage::Database::bind_text(stmt, 1, project_id); });
     out.reserve(rows.size());
     for (const auto& row : rows) {
@@ -195,6 +224,28 @@ bool KnowledgeGraphStore::delete_edge(const std::string& project_id, const std::
     return true;
 }
 
+int KnowledgeGraphStore::delete_edges_between(const std::string& project_id,
+                                              const std::string& from_id,
+                                              const std::string& to_id,
+                                              const std::string& relation) {
+    if (!db_ || from_id.empty() || to_id.empty()) {
+        return 0;
+    }
+    int deleted = 0;
+    for (const auto& e : list_edges(project_id)) {
+        if (e.from_id != from_id || e.to_id != to_id) {
+            continue;
+        }
+        if (!relation.empty() && e.relation != relation) {
+            continue;
+        }
+        if (delete_edge(project_id, e.id)) {
+            deleted += 1;
+        }
+    }
+    return deleted;
+}
+
 std::vector<KnowledgeEdge> KnowledgeGraphStore::list_edges(const std::string& project_id) {
     std::vector<KnowledgeEdge> out;
     if (!db_) {
@@ -218,6 +269,8 @@ utils::Json KnowledgeGraphStore::graph_json(const std::string& project_id) {
             {"id", n.id},
             {"title", n.title},
             {"content", n.content},
+            {"summary", n.summary},
+            {"weight", clamp_weight(n.weight)},
             {"kind", n.kind},
             {"direction_id", n.direction_id},
             {"depth_layer", static_cast<std::int64_t>(n.depth_layer)},
@@ -236,12 +289,15 @@ utils::Json KnowledgeGraphStore::graph_json(const std::string& project_id) {
             {"meta_json", e.meta_json},
         }));
     }
+    // Capture sizes BEFORE move — moved-from vector::size() is 0.
+    const auto node_count = static_cast<std::int64_t>(nodes.size());
+    const auto edge_count = static_cast<std::int64_t>(edges.size());
     return utils::Json(utils::Json::Object{
         {"project_id", project_id},
         {"nodes", std::move(nodes)},
         {"edges", std::move(edges)},
-        {"node_count", static_cast<std::int64_t>(nodes.size())},
-        {"edge_count", static_cast<std::int64_t>(edges.size())},
+        {"node_count", node_count},
+        {"edge_count", edge_count},
     });
 }
 
@@ -251,6 +307,8 @@ utils::Json KnowledgeGraphStore::catalog_json(const std::string& project_id) {
         nodes.push_back(utils::Json(utils::Json::Object{
             {"id", n.id},
             {"title", n.title},
+            {"summary", n.summary},
+            {"weight", clamp_weight(n.weight)},
             {"kind", n.kind},
             {"direction_id", n.direction_id},
             {"depth_layer", static_cast<std::int64_t>(n.depth_layer)},

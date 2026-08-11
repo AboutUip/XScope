@@ -93,6 +93,8 @@ struct ChatRequest {
 
 struct ChatDelta {
     std::string content_delta;
+    /// Separate from content — reasoner models stream chain-of-thought here.
+    std::string reasoning_delta;
     std::string finish_reason;
     std::int64_t prompt_tokens = 0;
     std::int64_t completion_tokens = 0;

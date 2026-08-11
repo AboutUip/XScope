@@ -37,6 +37,7 @@ project.fragment.lock.json
 *.nuget.targets
 *.DotSettings.user
 *.rsuser
+*_wpftmp.csproj
 
 # --- CMake / C++ ---
 out/
@@ -107,6 +108,7 @@ $RECYCLE.BIN/
 *.p12
 master.key
 **/github_oauth.local.json
+**/ui.local.json
 
 # --- Logs / temp / scratch ---
 *.log
@@ -120,11 +122,24 @@ temp/
 .local/
 
 # --- Local reference checkouts (not part of the product) ---
+# Scratch assets (e.g. icon sources). Shipped copies live under clients/windows/Assets/.
 dev/
 
-# --- Packaging / installers (generated) ---
+# --- Packaging / installers (generated; keep scripts + WiX sources tracked) ---
 *.msi
 *.msix
+*.msm
+*.msp
 *.appx
+*.appxbundle
+*.msixbundle
 *.nupkg
 *.snupkg
+*.wixobj
+*.wixpdb
+*.cab
+*.wixlib
+packaging/**/out/
+packaging/**/bin/
+packaging/**/obj/
+packaging/**/publish/

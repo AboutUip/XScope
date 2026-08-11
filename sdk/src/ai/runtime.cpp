@@ -55,7 +55,8 @@ AiRuntime::Resolved AiRuntime::resolve(const std::string& model_id, bool require
 
 utils::Json AiRuntime::make_phase_doc(const ChatRequest& request, const std::string& phase,
                                       const std::string& assistant_content, const ChatDelta& delta,
-                                      const std::string& error) const {
+                                      const std::string& error,
+                                      const std::string& assistant_reasoning) const {
     utils::Json::Object meta;
     meta.emplace("kind", std::string("ai_chat"));
     meta.emplace("schema", 1);
@@ -65,10 +66,14 @@ utils::Json AiRuntime::make_phase_doc(const ChatRequest& request, const std::str
 
     utils::Json::Object assistant;
     assistant.emplace("role", std::string("assistant"));
-    assistant.emplace("content", assistant_content); // full fidelity accumulated text
+    assistant.emplace("content", assistant_content); // JSON / final answer only
+    if (!assistant_reasoning.empty()) {
+        assistant.emplace("reasoning", assistant_reasoning);
+    }
 
     utils::Json::Object delta_obj;
     delta_obj.emplace("content", delta.content_delta);
+    delta_obj.emplace("reasoning", delta.reasoning_delta);
 
     utils::Json::Object usage;
     usage.emplace("prompt_tokens", delta.prompt_tokens);
@@ -261,13 +266,15 @@ utils::Json AiRuntime::providers_status_json() const {
 }
 
 std::string AiRuntime::chat_stream_xaiop(const ChatRequest& request, const XaiopPhaseFn& on_phase,
-                                         network::CancelToken* cancel) {    if (!on_phase) {
+                                         network::CancelToken* cancel) {
+    if (!on_phase) {
         throw AiError("on_phase is required for chat_stream_xaiop (UI XAIOP contract)");
     }
     auto resolved = resolve(request.model_id, true);
     OpenAiCompatibleClient client(http_, [secret = resolved.secret]() { return secret; });
 
-    std::string assistant;
+    std::string content;
+    std::string reasoning;
     std::string final_wire;
     ChatDelta last;
 
@@ -284,12 +291,16 @@ std::string AiRuntime::chat_stream_xaiop(const ChatRequest& request, const Xaiop
             resolved.provider, resolved.model, request,
             [&](const ChatDelta& d) {
                 last = d;
+                if (!d.reasoning_delta.empty()) {
+                    reasoning += d.reasoning_delta;
+                }
                 if (!d.content_delta.empty()) {
-                    assistant += d.content_delta;
+                    content += d.content_delta;
                 }
                 const bool is_final = d.done;
                 const char* phase = is_final ? "final" : "delta";
-                auto doc = make_phase_doc(request, phase, assistant, d);
+                // assistant.content stays JSON/answer-only; reasoning is separate.
+                auto doc = make_phase_doc(request, phase, content, d, "", reasoning);
                 auto wire = encode_ai_xaiop(doc);
                 on_phase(wire, is_final);
                 if (is_final) {
@@ -302,7 +313,8 @@ std::string AiRuntime::chat_stream_xaiop(const ChatRequest& request, const Xaiop
         err.done = true;
         err.finish_reason = "error";
         err.content_delta.clear();
-        auto doc = make_phase_doc(request, "error", assistant, err, ex.what());
+        err.reasoning_delta.clear();
+        auto doc = make_phase_doc(request, "error", content, err, ex.what(), reasoning);
         final_wire = encode_ai_xaiop(doc);
         on_phase(final_wire, true);
         return final_wire;
@@ -313,7 +325,7 @@ std::string AiRuntime::chat_stream_xaiop(const ChatRequest& request, const Xaiop
         if (last.finish_reason.empty()) {
             last.finish_reason = "stop";
         }
-        auto doc = make_phase_doc(request, "final", assistant, last);
+        auto doc = make_phase_doc(request, "final", content, last, "", reasoning);
         final_wire = encode_ai_xaiop(doc);
         on_phase(final_wire, true);
     }

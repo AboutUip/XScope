@@ -191,4 +191,42 @@ std::int64_t EvidenceStore::append_event(const std::string& run_id, const std::s
     return 1;
 }
 
+std::vector<EvidenceStore::RunEvent> EvidenceStore::list_events(const std::string& run_id, int limit) {
+    std::vector<RunEvent> out;
+    if (!db_ || run_id.empty()) {
+        return out;
+    }
+    std::string sql =
+        "SELECT seq, phase, payload_json, ts FROM run_events WHERE run_id=? ORDER BY seq ASC";
+    if (limit > 0) {
+        sql += " LIMIT " + std::to_string(limit);
+    }
+    auto rows = db_->query(sql, [&](sqlite3_stmt* stmt) {
+        storage::Database::bind_text(stmt, 1, run_id);
+    });
+    out.reserve(rows.size());
+    for (const auto& row : rows) {
+        RunEvent ev;
+        ev.seq = row.size() > 0 && row[0] ? std::stoll(*row[0]) : 0;
+        ev.phase = row.size() > 1 ? row[1].value_or("") : "";
+        ev.payload_json = row.size() > 2 ? row[2].value_or("") : "";
+        ev.ts = row.size() > 3 && row[3] ? std::stoll(*row[3]) : 0;
+        out.push_back(std::move(ev));
+    }
+    return out;
+}
+
+int EvidenceStore::count_events(const std::string& run_id) {
+    if (!db_ || run_id.empty()) {
+        return 0;
+    }
+    auto rows = db_->query("SELECT COUNT(*) FROM run_events WHERE run_id=?", [&](sqlite3_stmt* stmt) {
+        storage::Database::bind_text(stmt, 1, run_id);
+    });
+    if (rows.empty() || rows[0].empty() || !rows[0][0]) {
+        return 0;
+    }
+    return static_cast<int>(std::stoll(*rows[0][0]));
+}
+
 } // namespace xscope::research

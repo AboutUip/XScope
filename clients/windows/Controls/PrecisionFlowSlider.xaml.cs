@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 
 namespace XScope.Controls;
@@ -79,6 +80,28 @@ public partial class PrecisionFlowSlider : UserControl
     }
 
     public event RoutedPropertyChangedEventHandler<int>? ValueChanged;
+
+    /// <summary>Refresh rail / accent paints for light↔dark theme switches.</summary>
+    public void ApplyThemeColors(Color accent, Color railIdle, bool dark)
+    {
+        Rail.Background = new SolidColorBrush(railIdle);
+        FillBase.Background = new SolidColorBrush(accent);
+        ThumbDot.Fill = new SolidColorBrush(accent);
+        ThumbDot.Stroke = new SolidColorBrush(dark
+            ? Color.FromRgb(0x16, 0x18, 0x1C)
+            : Colors.White);
+        ThumbHalo.Fill = new SolidColorBrush(Color.FromArgb(0x55, accent.R, accent.G, accent.B));
+        if (ThumbShadow is not null)
+        {
+            ThumbShadow.Color = dark ? Colors.Black : Color.FromRgb(0x20, 0x21, 0x24);
+        }
+
+        RailGlow.Background = new SolidColorBrush(Color.FromArgb(0x40, accent.R, accent.G, accent.B));
+        if (RailGlow.Effect is DropShadowEffect glowFx)
+        {
+            glowFx.Color = accent;
+        }
+    }
 
     private static void OnValueChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {

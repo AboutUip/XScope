@@ -53,6 +53,7 @@ public:
 
     static void bind_text(sqlite3_stmt* stmt, int index, std::string_view value);
     static void bind_int64(sqlite3_stmt* stmt, int index, std::int64_t value);
+    static void bind_double(sqlite3_stmt* stmt, int index, double value);
     static void bind_blob(sqlite3_stmt* stmt, int index, const void* data, int size);
     static void bind_null(sqlite3_stmt* stmt, int index);
 

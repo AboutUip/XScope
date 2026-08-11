@@ -1,0 +1,150 @@
+<Window x:Class="XScope.ExportReportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding L.ExportReport}"
+        Height="420"
+        Width="480"
+        MinHeight="360"
+        MinWidth="420"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Icon="pack://application:,,,/Assets/xscope.ico"
+        Background="{DynamicResource XScopeWindowBg}"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        TextElement.Foreground="{DynamicResource XScopeTextPrimary}">
+    <Window.Resources>
+        <Style x:Key="FormatCard" TargetType="Border">
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource XScopeBorder}" />
+            <Setter Property="Background" Value="{DynamicResource XScopeSurfaceAlt}" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="{Binding L.ExportReport}"
+                       FontSize="22"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource XScopeTextPrimary}" />
+            <TextBlock Text="{Binding L.ExportReportHint}"
+                       Margin="0,8,0,0"
+                       FontSize="13"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource XScopeTextSecondary}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1">
+            <Border Style="{StaticResource FormatCard}" MouseLeftButtonUp="OnMarkdownCardClick">
+                <DockPanel>
+                    <RadioButton DockPanel.Dock="Left"
+                                 IsChecked="{Binding IsMarkdown, Mode=TwoWay}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,12,0"
+                                 GroupName="ExportFormat" />
+                    <StackPanel>
+                        <TextBlock Text="{Binding L.ExportFormatMd}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource XScopeTextPrimary}" />
+                        <TextBlock Text="{Binding L.ExportFormatMdHint}"
+                                   Margin="0,4,0,0"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource XScopeTextSecondary}" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <Border Style="{StaticResource FormatCard}" MouseLeftButtonUp="OnPdfCardClick">
+                <DockPanel>
+                    <RadioButton DockPanel.Dock="Left"
+                                 IsChecked="{Binding IsPdf, Mode=TwoWay}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,12,0"
+                                 GroupName="ExportFormat" />
+                    <StackPanel>
+                        <TextBlock Text="{Binding L.ExportFormatPdf}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource XScopeTextPrimary}" />
+                        <TextBlock Text="{Binding L.ExportFormatPdfHint}"
+                                   Margin="0,4,0,0"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource XScopeTextSecondary}" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <Border Style="{StaticResource FormatCard}" MouseLeftButtonUp="OnDocxCardClick">
+                <DockPanel>
+                    <RadioButton DockPanel.Dock="Left"
+                                 IsChecked="{Binding IsDocx, Mode=TwoWay}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,12,0"
+                                 GroupName="ExportFormat" />
+                    <StackPanel>
+                        <TextBlock Text="{Binding L.ExportFormatDocx}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource XScopeTextPrimary}" />
+                        <TextBlock Text="{Binding L.ExportFormatDocxHint}"
+                                   Margin="0,4,0,0"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource XScopeTextSecondary}" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </StackPanel>
+
+        <TextBlock Grid.Row="2"
+                   Text="{Binding ErrorText}"
+                   Margin="0,4,0,12"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Foreground="#D93025"
+                   Visibility="{Binding HasError, Converter={StaticResource XScopeBoolToVis}}" />
+
+        <DockPanel Grid.Row="3" LastChildFill="False">
+            <Button DockPanel.Dock="Right"
+                    Content="{Binding L.ExportConfirm}"
+                    Command="{Binding ExportCommand}"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}"
+                    MinWidth="108"
+                    Margin="8,0,0,0" />
+            <Button DockPanel.Dock="Right"
+                    Content="{Binding L.ExportCancel}"
+                    Command="{Binding CancelCommand}"
+                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}"
+                    MinWidth="96" />
+            <StackPanel Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Visibility="{Binding IsBusy, Converter={StaticResource XScopeBoolToVis}}">
+                <ProgressBar Width="18"
+                             Height="18"
+                             IsIndeterminate="True"
+                             Style="{StaticResource MaterialDesignCircularProgressBar}" />
+                <TextBlock Text="{Binding L.ExportWorking}"
+                           Margin="10,0,0,0"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource XScopeTextSecondary}" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

@@ -10,6 +10,7 @@ internal enum SettingsSection
     GitHub,
     Search,
     Ai,
+    Appearance,
     Language,
     About,
 }
@@ -21,6 +22,20 @@ internal sealed class LanguageChoice
 
     /// <summary>Native label for the option (stable across UI language).</summary>
     public string DisplayName => Id == AppLanguage.ChineseSimplified ? "中文（简体）" : "English";
+}
+
+internal sealed partial class ThemeChoice : ObservableObject
+{
+    public required AppThemeMode Id { get; init; }
+
+    public string DisplayName => Id switch
+    {
+        AppThemeMode.Light => Loc.Instance.T("theme.light"),
+        AppThemeMode.Dark => Loc.Instance.T("theme.dark"),
+        _ => Loc.Instance.T("theme.auto"),
+    };
+
+    public void NotifyLoc() => OnPropertyChanged(nameof(DisplayName));
 }
 
 internal sealed class SettingsSearchHit
@@ -93,6 +108,7 @@ internal sealed class SettingsSearchEntry
         SettingsSection.GitHub => Loc.Instance.NavGitHub,
         SettingsSection.Search => Loc.Instance.NavSearch,
         SettingsSection.Ai => Loc.Instance.NavAi,
+        SettingsSection.Appearance => Loc.Instance.NavAppearance,
         SettingsSection.Language => Loc.Instance.NavLanguage,
         SettingsSection.About => Loc.Instance.NavAbout,
         _ => section.ToString(),
@@ -177,6 +193,17 @@ internal partial class SettingsViewModel : ObservableObject, IDisposable
         },
         new()
         {
+            Section = SettingsSection.Appearance,
+            TitleKey = "theme.display",
+            SnippetKey = "theme.display.hint",
+            Keywords =
+            [
+                "theme", "appearance", "dark", "light", "auto", "night", "mode", "color scheme",
+                "主题", "外观", "深色", "浅色", "自动", "暗色", "亮色",
+            ],
+        },
+        new()
+        {
             Section = SettingsSection.Language,
             TitleKey = "language.display",
             SnippetKey = "language.display.hint",
@@ -217,6 +244,13 @@ internal partial class SettingsViewModel : ObservableObject, IDisposable
         new() { Id = AppLanguage.ChineseSimplified, Code = "zh-Hans" },
     ];
 
+    public IReadOnlyList<ThemeChoice> ThemeChoices { get; } =
+    [
+        new() { Id = AppThemeMode.Auto },
+        new() { Id = AppThemeMode.Light },
+        new() { Id = AppThemeMode.Dark },
+    ];
+
     public ObservableCollection<SettingsSearchHit> SearchResults { get; } = [];
 
     [ObservableProperty]
@@ -227,6 +261,9 @@ internal partial class SettingsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private LanguageChoice? _selectedLanguage;
+
+    [ObservableProperty]
+    private ThemeChoice? _selectedTheme;
 
     [ObservableProperty]
     private bool _isSearching;
@@ -251,19 +288,23 @@ internal partial class SettingsViewModel : ObservableObject, IDisposable
         var v = typeof(App).Assembly.GetName().Version;
         VersionLabel = v is null ? "v0.1.0" : $"v{v.Major}.{v.Minor}.{v.Build}";
         SelectedLanguage = LanguageChoices.First(c => c.Id == Loc.Instance.Language);
+        SelectedTheme = ThemeChoices.First(c => c.Id == ThemeService.Preference);
         Loc.Instance.PropertyChanged += OnLocChanged;
+        ThemeService.ThemeChanged += OnThemeChanged;
         RefreshSearch();
     }
 
     public bool IsGitHub => !IsSearching && SelectedSection == SettingsSection.GitHub;
     public bool IsSearch => !IsSearching && SelectedSection == SettingsSection.Search;
     public bool IsAi => !IsSearching && SelectedSection == SettingsSection.Ai;
+    public bool IsAppearance => !IsSearching && SelectedSection == SettingsSection.Appearance;
     public bool IsLanguage => !IsSearching && SelectedSection == SettingsSection.Language;
     public bool IsAbout => !IsSearching && SelectedSection == SettingsSection.About;
 
     public bool ShowNavGitHub => !IsSearching || SectionHasHits(SettingsSection.GitHub);
     public bool ShowNavSearch => !IsSearching || SectionHasHits(SettingsSection.Search);
     public bool ShowNavAi => !IsSearching || SectionHasHits(SettingsSection.Ai);
+    public bool ShowNavAppearance => !IsSearching || SectionHasHits(SettingsSection.Appearance);
     public bool ShowNavLanguage => !IsSearching || SectionHasHits(SettingsSection.Language);
     public bool ShowNavAbout => !IsSearching || SectionHasHits(SettingsSection.About);
 
@@ -312,10 +353,30 @@ internal partial class SettingsViewModel : ObservableObject, IDisposable
         Loc.Instance.SetLanguage(value.Id);
     }
 
+    partial void OnSelectedThemeChanged(ThemeChoice? value)
+    {
+        if (value is null || value.Id == ThemeService.Preference)
+        {
+            return;
+        }
+
+        ThemeService.SetPreference(value.Id);
+    }
+
+    private void OnThemeChanged()
+    {
+        SelectedTheme = ThemeChoices.First(c => c.Id == ThemeService.Preference);
+    }
+
     private void OnLocChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         OnPropertyChanged(nameof(L));
         SelectedLanguage = LanguageChoices.First(c => c.Id == Loc.Instance.Language);
+        foreach (var theme in ThemeChoices)
+        {
+            theme.NotifyLoc();
+        }
+
         foreach (var m in SearchModules)
         {
             m.NotifyLoc();
@@ -372,6 +433,7 @@ internal partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowNavGitHub));
         OnPropertyChanged(nameof(ShowNavSearch));
         OnPropertyChanged(nameof(ShowNavAi));
+        OnPropertyChanged(nameof(ShowNavAppearance));
         OnPropertyChanged(nameof(ShowNavLanguage));
         OnPropertyChanged(nameof(ShowNavAbout));
     }
@@ -381,6 +443,7 @@ internal partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsGitHub));
         OnPropertyChanged(nameof(IsSearch));
         OnPropertyChanged(nameof(IsAi));
+        OnPropertyChanged(nameof(IsAppearance));
         OnPropertyChanged(nameof(IsLanguage));
         OnPropertyChanged(nameof(IsAbout));
     }
@@ -410,6 +473,7 @@ internal partial class SettingsViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         Loc.Instance.PropertyChanged -= OnLocChanged;
+        ThemeService.ThemeChanged -= OnThemeChanged;
         GitHub.Dispose();
         _aiService.Dispose();
         _searchService.Dispose();

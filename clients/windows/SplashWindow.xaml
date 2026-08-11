@@ -17,7 +17,7 @@
             <Border x:Name="RootChrome"
             CornerRadius="22"
             ClipToBounds="True"
-            Background="{StaticResource SplashBgBrush}">
+            Background="{DynamicResource SplashBgBrush}">
         <Border.Effect>
             <DropShadowEffect BlurRadius="40"
                               ShadowDepth="0"
@@ -25,7 +25,7 @@
                               Color="#1A2A3A" />
         </Border.Effect>
         <Grid>
-            <Rectangle>
+            <Rectangle x:Name="LightWash">
                 <Rectangle.Fill>
                     <RadialGradientBrush GradientOrigin="0.32,0.28" Center="0.38,0.32" RadiusX="1.05" RadiusY="0.9">
                         <GradientStop Color="#FBFDFF" Offset="0" />
@@ -34,7 +34,16 @@
                     </RadialGradientBrush>
                 </Rectangle.Fill>
             </Rectangle>
-            <Rectangle Opacity="0.4">
+            <Rectangle x:Name="DarkWash" Visibility="Collapsed">
+                <Rectangle.Fill>
+                    <RadialGradientBrush GradientOrigin="0.32,0.28" Center="0.38,0.32" RadiusX="1.05" RadiusY="0.9">
+                        <GradientStop Color="#1A1A1A" Offset="0" />
+                        <GradientStop Color="#0A0A0A" Offset="0.52" />
+                        <GradientStop Color="#000000" Offset="1" />
+                    </RadialGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+            <Rectangle x:Name="LightVeil" Opacity="0.4">
                 <Rectangle.Fill>
                     <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
                         <GradientStop Color="#00000000" Offset="0.3" />
@@ -185,7 +194,7 @@
                            FontFamily="Bahnschrift, Segoe UI"
                            FontSize="12"
                            FontWeight="SemiBold"
-                           Foreground="#5A7380"
+                           Foreground="{DynamicResource XScopeTextSecondary}"
                            Opacity="0"
                            RenderTransformOrigin="0.5,0.5">
                     <TextBlock.RenderTransform>

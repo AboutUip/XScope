@@ -194,6 +194,10 @@ void Database::bind_int64(sqlite3_stmt* stmt, int index, std::int64_t value) {
     sqlite3_bind_int64(stmt, index, value);
 }
 
+void Database::bind_double(sqlite3_stmt* stmt, int index, double value) {
+    sqlite3_bind_double(stmt, index, value);
+}
+
 void Database::bind_blob(sqlite3_stmt* stmt, int index, const void* data, int size) {
     sqlite3_bind_blob(stmt, index, data, size, SQLITE_TRANSIENT);
 }

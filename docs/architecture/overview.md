@@ -27,7 +27,7 @@ XScope is a local **intelligent network research** toolkit. Users create researc
 ## Design pillars
 
 1. **Modular SDK** — capabilities evolve independently; no god-object core.
-2. **UI-first client** — Windows WPF + Material Design 3; no WebView for shell UI.
+2. **UI-first client** — Windows WPF + Material Design 3; appearance Auto/Light/Dark; report export (md/pdf/docx); no WebView for shell UI.
 3. **Local-only data** — client supplies `data_root`; one project = one directory tree + encrypted DB.
 4. **Extensible workspace** — many projects under one root; schema starts minimal and grows.
 5. **Multi-window / multi-process** — stable locking + IPC sync when the same project is open more than once.

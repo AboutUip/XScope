@@ -1,0 +1,139 @@
+<UserControl x:Class="XScope.Controls.ResearchSidePanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:controls="clr-namespace:XScope.Controls"
+             Background="Transparent"
+             FocusVisualStyle="{x:Null}"
+             ClipToBounds="True"
+             SnapsToDevicePixels="True">
+
+    <Grid Background="{DynamicResource XScopeWindowBg}">
+        <!-- Left hairline divider (Google panel edge) -->
+        <Border Width="1"
+                HorizontalAlignment="Left"
+                Background="{DynamicResource XScopeBorder}"
+                Panel.ZIndex="5" />
+
+        <!-- Drag to resize when expanded (left edge) -->
+        <Border x:Name="ResizeGrip"
+                Width="6"
+                HorizontalAlignment="Left"
+                Background="Transparent"
+                Cursor="SizeWE"
+                Panel.ZIndex="40"
+                Visibility="Collapsed"
+                ToolTip="拖动调整宽度"
+                MouseLeftButtonDown="ResizeGrip_OnMouseLeftButtonDown"
+                MouseMove="ResizeGrip_OnMouseMove"
+                MouseLeftButtonUp="ResizeGrip_OnMouseLeftButtonUp" />
+
+        <!-- Collapsed rail -->
+        <Border x:Name="CollapsedRail"
+                HorizontalAlignment="Stretch"
+                Background="{DynamicResource XScopeSurfaceAlt}">
+            <Button Command="{Binding ExpandCommand}"
+                    ToolTip="{Binding L.SidePanelExpand}"
+                    Cursor="Hand"
+                    Style="{StaticResource MaterialDesignIconButton}"
+                    Width="40"
+                    Height="40"
+                    VerticalAlignment="Top"
+                    HorizontalAlignment="Center"
+                    Margin="0,12,0,0"
+                    FocusVisualStyle="{x:Null}">
+                <materialDesign:PackIcon x:Name="ExpandChevron"
+                                         Kind="ChevronLeft"
+                                         Width="22"
+                                         Height="22"
+                                         Foreground="{DynamicResource XScopeTextSecondary}" />
+            </Button>
+        </Border>
+
+        <!-- Expanded panel -->
+        <Border x:Name="ExpandedPanel"
+                HorizontalAlignment="Stretch"
+                Background="{DynamicResource XScopeSurfaceAlt}"
+                Opacity="0"
+                IsHitTestVisible="False">
+            <DockPanel>
+                <!-- Header -->
+                <Border DockPanel.Dock="Top"
+                        Padding="16,14,8,0"
+                        BorderBrush="{DynamicResource XScopeBorder}"
+                        BorderThickness="0,0,0,1">
+                    <DockPanel LastChildFill="True">
+                        <Button DockPanel.Dock="Right"
+                                Command="{Binding CollapseCommand}"
+                                ToolTip="{Binding L.SidePanelCollapse}"
+                                Cursor="Hand"
+                                Style="{StaticResource MaterialDesignIconButton}"
+                                Width="36"
+                                Height="36"
+                                Margin="4,0,4,8"
+                                VerticalAlignment="Top"
+                                FocusVisualStyle="{x:Null}">
+                            <materialDesign:PackIcon x:Name="CollapseChevron"
+                                                     Kind="ChevronRight"
+                                                     Width="22"
+                                                     Height="22"
+                                                     Foreground="{DynamicResource XScopeTextSecondary}" />
+                        </Button>
+                        <Button DockPanel.Dock="Right"
+                                Command="{Binding RefreshCommand}"
+                                ToolTip="{Binding L.SidePanelRefresh}"
+                                Cursor="Hand"
+                                Style="{StaticResource MaterialDesignIconButton}"
+                                Width="36"
+                                Height="36"
+                                Margin="0,0,0,8"
+                                VerticalAlignment="Top"
+                                FocusVisualStyle="{x:Null}">
+                            <materialDesign:PackIcon Kind="Refresh"
+                                                     Width="18"
+                                                     Height="18"
+                                                     Foreground="{DynamicResource XScopeTextSecondary}" />
+                        </Button>
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="{Binding L.SidePanelTitle}"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource XScopeTextPrimary}" />
+                            <TextBlock Text="{Binding StatusHint}"
+                                       Margin="0,4,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource XScopeTextSecondary}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- Content: knowledge association graph only -->
+                <Grid Margin="0">
+                    <Border Background="{DynamicResource XScopeSurfaceAlt}"
+                            Visibility="{Binding IsEmpty, Converter={StaticResource XScopeBoolToVis}}">
+                        <StackPanel VerticalAlignment="Center"
+                                    HorizontalAlignment="Center"
+                                    Margin="24">
+                            <TextBlock Text="暂无知识节点"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource XScopeTextPrimary}"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center" />
+                            <TextBlock Text="有意义、可复用的发现需由模型写入知识关联图。"
+                                       Margin="0,6,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource XScopeTextSecondary}"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <controls:KnowledgeGraph3DView GraphJson="{Binding GraphJson}"
+                                                   Visibility="{Binding HasGraph, Converter={StaticResource XScopeBoolToVis}}" />
+                </Grid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

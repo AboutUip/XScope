@@ -9,6 +9,7 @@
 #include "xscope/prompts/prompt_engine.hpp"
 #include "xscope/providers/github/rest_client.hpp"
 #include "xscope/providers/bocha/client.hpp"
+#include "xscope/providers/twtapi/client.hpp"
 #include "xscope/registry/search_registry.hpp"
 #include "xscope/registry/usable_module.hpp"
 #include "xscope/skills/skill_store.hpp"
@@ -101,7 +102,10 @@ public:
     /// Ensure builtin Bocha skill + registry module exist (idempotent).
     void ensure_bocha_provider();
 
-    /// Ensure all builtin search modules (GitHub, Bocha, …).
+    /// Ensure builtin TwtAPI (Twitter/X) skill + registry module exist (idempotent).
+    void ensure_twtapi_provider();
+
+    /// Ensure all builtin search modules (GitHub, Bocha, TwtAPI, …).
     void ensure_search_providers();
 
     /// Ensure builtin DeepSeek / Kimi AI providers exist (idempotent; models via API sync).
@@ -112,6 +116,9 @@ public:
 
     /// Authenticated Bocha client using secret `bocha.default`.
     providers::bocha::Client bocha_client();
+
+    /// Authenticated TwtAPI client using secret `twtapi.default`.
+    providers::twtapi::Client twtapi_client();
 
 private:
     void ensure_layout();

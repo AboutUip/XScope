@@ -1,8 +1,12 @@
 #include "xscope/capi/xscope_capi.h"
 
+#include "xscope/research/evidence_store.hpp"
+#include "xscope/research/knowledge_graph.hpp"
+#include "xscope/research/memory_tree.hpp"
 #include "xscope/research/orchestrator.hpp"
 #include "xscope/storage/workspace.hpp"
 #include "xscope/utils/json.hpp"
+#include "xscope/utils/path.hpp"
 #include "xscope/xaiop/bridge.hpp"
 
 #include <cstdlib>
@@ -754,6 +758,148 @@ char* xscope_research_evidence_list(xscope_workspace* ws, const char* project_id
         obj.emplace("run_id", std::string(run_id_utf8));
         obj.emplace("project_id", std::string(project_id_utf8));
         obj.emplace("items", xscope::utils::Json(std::move(arr)));
+        return json_ok(std::move(obj));
+    } catch (const std::exception& ex) {
+        return json_err(ex.what());
+    }
+}
+
+char* xscope_project_knowledge_graph(xscope_workspace* ws, const char* project_id_utf8) {
+    if (!ws) {
+        return json_err("workspace is null");
+    }
+    if (!project_id_utf8 || !*project_id_utf8) {
+        return json_err("project_id is empty");
+    }
+    try {
+        auto db = ws->ws.open_project_db(project_id_utf8);
+        xscope::research::KnowledgeGraphStore kg;
+        kg.open(db);
+        auto graph = kg.graph_json(project_id_utf8);
+        kg.close();
+        db.close();
+        xscope::utils::Json::Object obj;
+        obj.emplace("graph", std::move(graph));
+        return json_ok(std::move(obj));
+    } catch (const std::exception& ex) {
+        return json_err(ex.what());
+    }
+}
+
+char* xscope_project_research_snapshot(xscope_workspace* ws, const char* project_id_utf8) {
+    if (!ws) {
+        return json_err("workspace is null");
+    }
+    if (!project_id_utf8 || !*project_id_utf8) {
+        return json_err("project_id is empty");
+    }
+    try {
+        const std::string project_id = project_id_utf8;
+        auto db = ws->ws.open_project_db(project_id);
+        xscope::research::EvidenceStore store;
+        const auto files =
+            xscope::utils::path_from_utf8(ws->ws.data_root()) / "projects" / project_id / "files";
+        store.open(db, files);
+
+        xscope::utils::Json::Object obj;
+        obj.emplace("project_id", project_id);
+
+        auto runs = store.list_runs();
+        std::string run_id;
+        std::string query;
+        std::string summary;
+        std::string status;
+        std::string model_id;
+        int precision = 1;
+        if (!runs.empty()) {
+            const auto& run = runs.front(); // created_at DESC
+            run_id = run.id;
+            query = run.query;
+            summary = run.summary;
+            status = xscope::research::run_status_to_string(run.status);
+            model_id = run.model_id;
+            precision = xscope::research::precision_to_int(run.precision);
+
+            xscope::utils::Json::Object run_obj;
+            run_obj.emplace("run_id", run.id);
+            run_obj.emplace("query", run.query);
+            run_obj.emplace("model_id", run.model_id);
+            run_obj.emplace("precision", precision);
+            run_obj.emplace("status", status);
+            run_obj.emplace("summary", run.summary);
+            run_obj.emplace("search_rounds_done", run.search_rounds_done);
+            run_obj.emplace("created_at", run.created_at);
+            run_obj.emplace("updated_at", run.updated_at);
+            obj.emplace("run", xscope::utils::Json(std::move(run_obj)));
+        }
+
+        std::string report_markdown;
+        xscope::research::MemoryTreeStore mem;
+        mem.open(db);
+        // Only need report bodies — avoid pulling every memory row body when possible.
+        auto entries = mem.list_entries(project_id);
+        std::int64_t best_ts = -1;
+        for (const auto& e : entries) {
+            if (e.kind != "report") {
+                continue;
+            }
+            if (e.updated_at >= best_ts) {
+                best_ts = e.updated_at;
+                report_markdown = e.body;
+            }
+        }
+        mem.close();
+
+        int event_count = 0;
+        int evidence_count = 0;
+        if (!runs.empty()) {
+            evidence_count = runs.front().search_rounds_done;
+        }
+        if (!run_id.empty()) {
+            event_count = store.count_events(run_id);
+            // Do NOT ship / load full event payloads when a report already exists
+            // (replaying them froze the WPF feed). Only peek synthesize/final as fallback.
+            if (report_markdown.empty()) {
+                auto events = store.list_events(run_id, 0);
+                for (auto it = events.rbegin(); it != events.rend(); ++it) {
+                    if (it->phase != "synthesize" && it->phase != "final") {
+                        continue;
+                    }
+                    try {
+                        auto doc = xscope::utils::Json::parse(it->payload_json);
+                        if (doc.is_object() && doc.contains("payload")) {
+                            const auto& p = doc.at("payload");
+                            if (p.is_object() && p.contains("markdown")) {
+                                report_markdown = p.at("markdown").as_string("");
+                                if (!report_markdown.empty()) {
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (...) {
+                    }
+                }
+            }
+        }
+
+        obj.emplace("events", xscope::utils::Json(xscope::utils::Json::Array{}));
+        obj.emplace("event_count", static_cast<std::int64_t>(event_count));
+        obj.emplace("evidence_count", static_cast<std::int64_t>(evidence_count));
+        obj.emplace("report_markdown", report_markdown);
+        obj.emplace("has_report", !report_markdown.empty());
+        obj.emplace("query", query);
+        obj.emplace("summary", summary);
+        obj.emplace("status", status);
+        obj.emplace("model_id", model_id);
+        obj.emplace("precision", precision);
+
+        xscope::research::KnowledgeGraphStore kg;
+        kg.open(db);
+        obj.emplace("knowledge_graph", kg.graph_json(project_id));
+        kg.close();
+
+        store.close();
+        db.close();
         return json_ok(std::move(obj));
     } catch (const std::exception& ex) {
         return json_err(ex.what());

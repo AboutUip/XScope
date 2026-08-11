@@ -28,8 +28,10 @@ The **Windows WPF client** is the product UI (projects, settings, research shell
 - **Search modules** — GitHub (OAuth device flow / PAT + REST) and Bocha web search
 - **AI providers** — OpenAI-compatible chat (e.g. DeepSeek, Kimi) via settings
 - **Project library** — local projects, pin / rename / delete
-- **Knowledge graph + stage memory tree** — catalogs to the model; bodies on demand
+- **Knowledge graph + stage memory tree** — catalogs to the model; bodies on demand; 3D insights rail in the client
 - **XAIOP streaming** — live phases for thinking, keywords, evidence, report
+- **Appearance** — Auto / Light / Dark (X-style dark chrome)
+- **Report export** — Markdown / PDF / Word from the finished report (client-side)
 
 Runtime data lives under `%LocalAppData%\XScope\data` (secrets encrypted; not in git).
 
@@ -82,6 +84,7 @@ Or open [`clients/windows/XScope.sln`](clients/windows/XScope.sln) in Visual Stu
 ```text
 XScope/
 ├── clients/windows/     # WPF app (net9.0-windows, x64)
+├── packaging/windows/   # MSI build (WiX + publish script)
 ├── sdk/                 # C++20 engine + C API + deps (sqlite, xaiop_native)
 ├── docs/                # Architecture & client notes (EN + zh-CN)
 ├── README.md
@@ -107,6 +110,7 @@ Start at [`docs/README.md`](docs/README.md) (中文: [`docs/README.zh-CN.md`](do
 | Skills / Registry / Utils | [skills](docs/architecture/skills.md) · [registry](docs/architecture/registry.md) · [utils](docs/architecture/utils.md) |
 | Concurrency / Security | [concurrency](docs/architecture/concurrency.md) · [security](docs/architecture/security.md) |
 | Windows client | [client/windows](docs/client/windows.md) |
+| Windows MSI packaging | [packaging/windows](docs/packaging/windows.md) |
 | SDK | [sdk/overview](docs/sdk/overview.md) |
 
 ## License
