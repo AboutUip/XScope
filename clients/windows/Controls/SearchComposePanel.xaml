@@ -1,0 +1,413 @@
+<UserControl x:Class="XScope.Controls.SearchComposePanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:controls="clr-namespace:XScope.Controls">
+    <UserControl.Resources>
+        <Style x:Key="SearchChipButton" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="#5F6368" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="14"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E8F0FE" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SearchMenuItemButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <Border x:Name="SearchChrome"
+                MinHeight="52"
+                MaxHeight="160"
+                CornerRadius="26"
+                Background="#FFFFFF"
+                BorderBrush="#DFE1E5"
+                BorderThickness="1"
+                Padding="4,6,6,6">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="8"
+                                  ShadowDepth="1"
+                                  Opacity="0.12"
+                                  Color="#202124" />
+            </Border.Effect>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <materialDesign:PackIcon Grid.Column="0"
+                                         Kind="Magnify"
+                                         Width="22"
+                                         Height="22"
+                                         VerticalAlignment="Top"
+                                         Margin="12,10,4,0"
+                                         Foreground="#9AA0A6" />
+
+                <TextBox x:Name="SearchBox"
+                         Grid.Column="1"
+                         Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         FontSize="16"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         VerticalContentAlignment="Center"
+                         Padding="4,6,8,6"
+                         materialDesign:HintAssist.Hint="{Binding L.MainSearchHint}"
+                         materialDesign:HintAssist.IsFloating="False"
+                         materialDesign:TextFieldAssist.DecorationVisibility="Collapsed"
+                         CaretBrush="#1A73E8"
+                         PreviewKeyDown="OnSearchPreviewKeyDown"
+                         TextChanged="OnSearchTextChanged" />
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="0,0,4,0">
+                    <!-- Provider logo -->
+                    <Grid>
+                        <ToggleButton x:Name="ProviderToggle"
+                                      Style="{StaticResource SearchChipButton}"
+                                      Padding="3"
+                                      IsEnabled="{Binding HasUsableAi}"
+                                      ToolTip="{Binding SelectedProvider.DisplayName}"
+                                      Checked="OnProviderMenuOpen"
+                                      Unchecked="OnProviderMenuClose">
+                            <Grid Width="28" Height="28">
+                                <Border CornerRadius="8"
+                                        Background="#111111"
+                                        ClipToBounds="True"
+                                        Visibility="{Binding SelectedProviderHasLogo, Converter={StaticResource XScopeBoolToVis}}">
+                                    <Image Source="{Binding SelectedProviderLogoUri}"
+                                           Stretch="UniformToFill"
+                                           SnapsToDevicePixels="True"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                </Border>
+                                <materialDesign:PackIcon Kind="{Binding SelectedProviderFallbackIcon}"
+                                                         Width="20"
+                                                         Height="20"
+                                                         HorizontalAlignment="Center"
+                                                         VerticalAlignment="Center"
+                                                         Foreground="#1A73E8"
+                                                         Visibility="{Binding SelectedProviderHasLogo, Converter={StaticResource XScopeInvertBoolToVis}}" />
+                            </Grid>
+                        </ToggleButton>
+                        <Popup x:Name="ProviderPopup"
+                               PlacementTarget="{Binding ElementName=ProviderToggle}"
+                               Placement="Bottom"
+                               StaysOpen="False"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade"
+                               Closed="OnProviderPopupClosed">
+                            <Border Background="#FFFFFF"
+                                    CornerRadius="12"
+                                    Padding="6"
+                                    BorderBrush="#E8EAED"
+                                    BorderThickness="1"
+                                    MinWidth="188"
+                                    Margin="0,6,0,0">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="16"
+                                                      ShadowDepth="2"
+                                                      Opacity="0.18"
+                                                      Color="#202124" />
+                                </Border.Effect>
+                                <ItemsControl ItemsSource="{Binding UsableProviders}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Style="{StaticResource SearchMenuItemButton}"
+                                                    Click="OnProviderPicked"
+                                                    Tag="{Binding}">
+                                                <DockPanel>
+                                                    <Border DockPanel.Dock="Left"
+                                                            Width="26"
+                                                            Height="26"
+                                                            CornerRadius="7"
+                                                            Background="#111111"
+                                                            ClipToBounds="True"
+                                                            Margin="0,0,10,0"
+                                                            Visibility="{Binding HasLogo, Converter={StaticResource XScopeBoolToVis}}">
+                                                        <Image Source="{Binding LogoUri}"
+                                                               Stretch="UniformToFill"
+                                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                                    </Border>
+                                                    <materialDesign:PackIcon DockPanel.Dock="Left"
+                                                                             Kind="{Binding FallbackIconKind}"
+                                                                             Width="20"
+                                                                             Height="20"
+                                                                             VerticalAlignment="Center"
+                                                                             Foreground="#1A73E8"
+                                                                             Margin="0,0,10,0"
+                                                                             Visibility="{Binding HasLogo, Converter={StaticResource XScopeInvertBoolToVis}}" />
+                                                    <TextBlock Text="{Binding DisplayName}"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="13"
+                                                               Foreground="#202124" />
+                                                </DockPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
+                        </Popup>
+                    </Grid>
+
+                    <!-- Model chip -->
+                    <Grid Margin="4,0,0,0">
+                        <ToggleButton x:Name="ModelToggle"
+                                      Style="{StaticResource SearchChipButton}"
+                                      IsEnabled="{Binding HasUsableAi}"
+                                      ToolTip="{Binding L.MainSearchModel}"
+                                      Checked="OnModelMenuOpen"
+                                      Unchecked="OnModelMenuClose">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding SelectedModel.DisplayName}"
+                                           MaxWidth="140"
+                                           TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center"
+                                           Foreground="#3C4043" />
+                                <materialDesign:PackIcon Kind="MenuDown"
+                                                         Width="16"
+                                                         Height="16"
+                                                         VerticalAlignment="Center"
+                                                         Margin="2,0,0,0"
+                                                         Foreground="#80868B" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <Popup x:Name="ModelPopup"
+                               PlacementTarget="{Binding ElementName=ModelToggle}"
+                               Placement="Bottom"
+                               StaysOpen="False"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade"
+                               Closed="OnModelPopupClosed">
+                            <Border Background="#FFFFFF"
+                                    CornerRadius="12"
+                                    Padding="6"
+                                    BorderBrush="#E8EAED"
+                                    BorderThickness="1"
+                                    MinWidth="200"
+                                    MaxHeight="280"
+                                    Margin="0,6,0,0">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="16"
+                                                      ShadowDepth="2"
+                                                      Opacity="0.18"
+                                                      Color="#202124" />
+                                </Border.Effect>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding UsableModels}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Style="{StaticResource SearchMenuItemButton}"
+                                                        Click="OnModelPicked"
+                                                        Tag="{Binding}">
+                                                    <TextBlock Text="{Binding DisplayName}"
+                                                               FontSize="13"
+                                                               Foreground="#202124"
+                                                               TextWrapping="Wrap" />
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+
+                    <!-- Precision chip → popup slider (X-style accent lives here only) -->
+                    <Grid Margin="4,0,0,0">
+                        <ToggleButton x:Name="PrecisionToggle"
+                                      ToolTip="{Binding L.MainSearchPrecision}"
+                                      Checked="OnPrecisionMenuOpen"
+                                      Unchecked="OnPrecisionMenuClose"
+                                      Cursor="Hand"
+                                      BorderThickness="0"
+                                      Padding="10,5">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="PrecisionChipBd"
+                                            Background="#F1F3F4"
+                                            CornerRadius="14"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center" />
+                                    </Border>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="PrecisionChipLabel"
+                                           Text="{Binding ActivePrecisionLabel}"
+                                           VerticalAlignment="Center"
+                                           Foreground="#3C4043" />
+                                <materialDesign:PackIcon x:Name="PrecisionChipChevron"
+                                                         Kind="MenuDown"
+                                                         Width="16"
+                                                         Height="16"
+                                                         VerticalAlignment="Center"
+                                                         Margin="2,0,0,0"
+                                                         Foreground="#80868B" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <Popup x:Name="PrecisionPopup"
+                               PlacementTarget="{Binding ElementName=PrecisionToggle}"
+                               Placement="Bottom"
+                               HorizontalOffset="-200"
+                               StaysOpen="False"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade"
+                               Closed="OnPrecisionPopupClosed"
+                               Opened="OnPrecisionPopupOpened">
+                            <Grid Width="320" Margin="0,6,0,0">
+                                <!-- Kept collapsed: names referenced by code-behind for safe no-op. -->
+                                <Border x:Name="PrecisionEdgeGlow" Visibility="Collapsed" />
+                                <Border x:Name="PrecisionWash" Visibility="Collapsed" />
+                                <Border x:Name="PrecisionAccentBar" Visibility="Collapsed" />
+
+                                <Border x:Name="PrecisionPopupRoot"
+                                        Background="#FFFFFF"
+                                        CornerRadius="12"
+                                        BorderBrush="#E8EAED"
+                                        BorderThickness="1"
+                                        ClipToBounds="True">
+                                    <Border.Effect>
+                                        <DropShadowEffect x:Name="PrecisionPopupShadow"
+                                                          BlurRadius="12"
+                                                          ShadowDepth="1"
+                                                          Opacity="0.14"
+                                                          Color="#202124" />
+                                    </Border.Effect>
+                                    <StackPanel Margin="18,14,18,16">
+                                            <DockPanel Margin="0,0,0,14">
+                                                <TextBlock x:Name="PrecisionPopupTitle"
+                                                           DockPanel.Dock="Left"
+                                                           Text="{Binding L.MainSearchPrecision}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#5F6368" />
+                                                <TextBlock x:Name="PrecisionPopupValue"
+                                                           Text="{Binding ActivePrecisionLabel}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#202124"
+                                                           HorizontalAlignment="Right" />
+                                            </DockPanel>
+
+                                            <Grid x:Name="PrecisionTrackHost" Height="64">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="*" />
+                                                </Grid.RowDefinitions>
+                                                <controls:PrecisionFlowSlider x:Name="PrecisionFlow"
+                                                                              Grid.Row="0"
+                                                                              Height="48"
+                                                                              Value="{Binding PrecisionIndex, Mode=TwoWay}"
+                                                                              ValueChanged="OnPrecisionFlowValueChanged"
+                                                                              SizeChanged="OnPrecisionFlowSizeChanged" />
+                                                <Canvas x:Name="PrecisionLabelCanvas"
+                                                        Grid.Row="1"
+                                                        ClipToBounds="False"
+                                                        Margin="14,2,14,0">
+                                                    <TextBlock x:Name="LabelQuick"
+                                                               Text="{Binding L.MainPrecisionQuick}"
+                                                               FontSize="11"
+                                                               Foreground="#5F6368" />
+                                                    <TextBlock x:Name="LabelNormal"
+                                                               Text="{Binding L.MainPrecisionNormal}"
+                                                               FontSize="11"
+                                                               Foreground="#5F6368" />
+                                                    <TextBlock x:Name="LabelDeep"
+                                                               Text="{Binding L.MainPrecisionDeep}"
+                                                               FontSize="11"
+                                                               Foreground="#5F6368" />
+                                                    <TextBlock x:Name="LabelMax"
+                                                               Text="{Binding L.MainPrecisionMax}"
+                                                               FontSize="11"
+                                                               Foreground="#5F6368" />
+                                                </Canvas>
+                                            </Grid>
+
+                                        <TextBlock x:Name="PrecisionHintLine"
+                                                   Margin="0,10,0,0"
+                                                   FontSize="12"
+                                                   Foreground="#5F6368"
+                                                   TextWrapping="Wrap">
+                                            <Run Text="{Binding PrecisionTokenHint, Mode=OneWay}" />
+                                            <Run Text="  ·  " />
+                                            <Run Text="{Binding PrecisionTimeHint, Mode=OneWay}" />
+                                        </TextBlock>
+                                        <TextBlock x:Name="PrecisionDetailLine"
+                                                   Text="{Binding PrecisionDetail}"
+                                                   Margin="0,4,0,0"
+                                                   FontSize="12"
+                                                   Foreground="#80868B"
+                                                   TextWrapping="Wrap" />
+                                        </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Popup>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TextBlock Text="{Binding AiOptionsHint}"
+                   Margin="0,10,0,0"
+                   FontSize="12"
+                   Foreground="#E37400"
+                   TextWrapping="Wrap"
+                   HorizontalAlignment="Right"
+                   Visibility="{Binding ShowAiOptionsHint, Converter={StaticResource XScopeBoolToVis}}" />
+    </StackPanel>
+</UserControl>

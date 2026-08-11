@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationIcon>Assets\xscope.ico</ApplicationIcon>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <!-- Fixes VS XAML designer XLS0414 (System.Object) with MaterialDesign package refs. -->
+    <IncludePackageReferencesDuringMarkupCompilation>true</IncludePackageReferencesDuringMarkupCompilation>
+    <XScopeSdkBuildDir Condition="'$(XScopeSdkBuildDir)' == ''">$(MSBuildThisFileDirectory)..\..\sdk\out\build\x64-debug</XScopeSdkBuildDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="MaterialDesignColors" Version="5.3.2" />
+    <PackageReference Include="MaterialDesignThemes" Version="5.3.2" />
+    <PackageReference Include="MdXaml" Version="1.27.0" />
+    <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\icon.png" />
+    <Resource Include="Assets\xscope.ico" />
+    <Resource Include="Assets\Providers\deepseek.png" />
+    <Resource Include="Assets\Providers\kimi.png" />
+  </ItemGroup>
+
+  <!-- Skip during VS design-time builds to avoid markup-compile hangs. -->
+  <Target Name="CopyXScopeNative" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' AND '$(BuildingForLiveUnitTesting)' != 'true'">
+    <ItemGroup>
+      <_NativeDlls Include="$(XScopeSdkBuildDir)\xscope_capi.dll" Condition="Exists('$(XScopeSdkBuildDir)\xscope_capi.dll')" />
+      <_NativeDlls Include="$(XScopeSdkBuildDir)\xaiop_native.dll" Condition="Exists('$(XScopeSdkBuildDir)\xaiop_native.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_NativeDlls)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="'@(_NativeDlls)' != ''" />
+    <Warning Text="xscope_capi.dll not found under $(XScopeSdkBuildDir). Build the SDK (cmake --build) before running GitHub login." Condition="!Exists('$(XScopeSdkBuildDir)\xscope_capi.dll')" />
+  </Target>
+
+</Project>

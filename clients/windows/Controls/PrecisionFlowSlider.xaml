@@ -1,0 +1,122 @@
+<UserControl x:Class="XScope.Controls.PrecisionFlowSlider"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Height="48"
+             MinWidth="120"
+             Cursor="Hand"
+             Focusable="True"
+             Background="Transparent">
+    <Grid x:Name="Root" ClipToBounds="False">
+        <!-- Full-height hit target so the thumb is easy to grab anywhere on the strip -->
+        <Border x:Name="HitStrip"
+                Background="#01FFFFFF"
+                VerticalAlignment="Stretch" />
+
+        <!-- Soft outer glow under the rail (Max / flow) -->
+        <Border x:Name="RailGlow"
+                Height="16"
+                CornerRadius="8"
+                VerticalAlignment="Center"
+                Margin="10,0"
+                Background="#401A73E8"
+                Opacity="0"
+                IsHitTestVisible="False">
+            <Border.Effect>
+                <DropShadowEffect Color="#1A73E8"
+                                  BlurRadius="16"
+                                  ShadowDepth="0"
+                                  Opacity="0.85" />
+            </Border.Effect>
+        </Border>
+
+        <!-- Idle rail -->
+        <Border x:Name="Rail"
+                Height="8"
+                CornerRadius="4"
+                Background="#E8EAED"
+                VerticalAlignment="Center"
+                Margin="14,0"
+                IsHitTestVisible="False" />
+
+        <!-- Filled segment hosts the looping 流光 -->
+        <Border x:Name="FillHost"
+                Height="8"
+                CornerRadius="4"
+                VerticalAlignment="Center"
+                HorizontalAlignment="Left"
+                Margin="14,0,0,0"
+                ClipToBounds="True"
+                IsHitTestVisible="False"
+                Width="0">
+            <Grid>
+                <Border x:Name="FillBase" Background="#1A73E8" />
+                <!-- Seamless tile: one band = FlowBandWidth; translate by exactly that amount -->
+                <Border x:Name="FlowLayer" Opacity="0">
+                    <Border.Background>
+                        <LinearGradientBrush x:Name="FlowBrush"
+                                             StartPoint="0,0.5"
+                                             EndPoint="140,0.5"
+                                             SpreadMethod="Repeat"
+                                             MappingMode="Absolute">
+                            <GradientStop Color="#001A73E8" Offset="0.00" />
+                            <GradientStop Color="#441A73E8" Offset="0.22" />
+                            <GradientStop Color="#BBFFFFFF" Offset="0.40" />
+                            <GradientStop Color="#FFFFFFFF" Offset="0.50" />
+                            <GradientStop Color="#CCE8F0FE" Offset="0.60" />
+                            <GradientStop Color="#551A73E8" Offset="0.78" />
+                            <GradientStop Color="#001A73E8" Offset="1.00" />
+                            <LinearGradientBrush.Transform>
+                                <TranslateTransform x:Name="FlowTx" X="0" />
+                            </LinearGradientBrush.Transform>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+                <!-- Soft sheen wash so the band reads even on solid blue -->
+                <Border x:Name="FlowWash" Opacity="0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#55FFFFFF" Offset="0" />
+                            <GradientStop Color="#00FFFFFF" Offset="0.55" />
+                            <GradientStop Color="#22000000" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Thumb: large invisible grab pad, compact visible knob -->
+        <Canvas x:Name="ThumbCanvas"
+                Margin="14,0"
+                IsHitTestVisible="False">
+            <Grid x:Name="Thumb"
+                  Width="44"
+                  Height="44"
+                  Canvas.Left="0"
+                  Canvas.Top="2">
+                <Ellipse x:Name="ThumbHalo"
+                         Width="32"
+                         Height="32"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         Fill="#551A73E8"
+                         Opacity="0" />
+                <Ellipse x:Name="ThumbDot"
+                         Width="18"
+                         Height="18"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         Fill="#1A73E8"
+                         Stroke="#FFFFFF"
+                         StrokeThickness="3">
+                    <Ellipse.Effect>
+                        <DropShadowEffect x:Name="ThumbShadow"
+                                          BlurRadius="8"
+                                          ShadowDepth="1"
+                                          Opacity="0.22"
+                                          Color="#202124" />
+                    </Ellipse.Effect>
+                </Ellipse>
+            </Grid>
+        </Canvas>
+    </Grid>
+</UserControl>

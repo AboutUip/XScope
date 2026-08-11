@@ -1,0 +1,130 @@
+# XScope — Git ignore
+
+# --- Visual Studio / MSBuild ---
+.vs/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.VC.db
+*.VC.db-shm
+*.VC.db-wal
+*.opendb
+*.aps
+ipch/
+*.VC.opendb
+
+# --- .NET / WPF ---
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+[Xx]64/
+[Xx]86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+artifacts/
+publish/
+TestResults/
+*.dll
+*.exe
+*.pdb
+*.cache
+*.log
+project.lock.json
+project.fragment.lock.json
+*.nuget.props
+*.nuget.targets
+*.DotSettings.user
+*.rsuser
+
+# --- CMake / C++ ---
+out/
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+install_manifest.txt
+*.obj
+*.o
+*.a
+*.lib
+*.so
+*.dylib
+*.exp
+*.ilk
+*.iobj
+*.ipdb
+*.pch
+*.idb
+*.sbr
+*.bsc
+*.pgc
+*.pgd
+*.tlog
+*.lastbuildstate
+*.recipe
+*.FileListAbsolute.txt
+
+# --- Go / embedded XAIOP ---
+# Rebuilt by CMake (`go build -buildmode=c-shared`).
+sdk/deps/xaiop_native/build/
+*.test
+*.out
+
+# --- SDK local outputs ---
+sdk/out/
+sdk/out/smoke-data/
+
+# --- IDEs / editors ---
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+*~
+*.code-workspace
+
+# --- OS ---
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Secrets / local runtime data (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.p12
+master.key
+**/github_oauth.local.json
+
+# --- Logs / temp / scratch ---
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+logs/
+tmp/
+temp/
+.local/
+
+# --- Local reference checkouts (not part of the product) ---
+dev/
+
+# --- Packaging / installers (generated) ---
+*.msi
+*.msix
+*.appx
+*.nupkg
+*.snupkg

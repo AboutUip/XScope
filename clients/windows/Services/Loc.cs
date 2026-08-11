@@ -1,0 +1,567 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
+namespace XScope.Services;
+
+/// <summary>UI strings. Default English; switch via Settings → Language.</summary>
+internal sealed partial class Loc : ObservableObject
+{
+    public static Loc Instance { get; } = new();
+
+    private AppLanguage _language = UiLanguageConfig.Default;
+
+    public AppLanguage Language
+    {
+        get => _language;
+        private set
+        {
+            if (SetProperty(ref _language, value))
+            {
+                OnPropertyChanged(string.Empty);
+            }
+        }
+    }
+
+    public void Initialize()
+    {
+        Language = UiLanguageConfig.Read();
+    }
+
+    public void SetLanguage(AppLanguage language)
+    {
+        if (language == Language)
+        {
+            return;
+        }
+
+        UiLanguageConfig.Save(language);
+        Language = language;
+    }
+
+    public string T(string key) => Language == AppLanguage.ChineseSimplified
+        ? Zh.GetValueOrDefault(key, En.GetValueOrDefault(key, key))
+        : En.GetValueOrDefault(key, key);
+
+    // --- bound properties (refresh via OnPropertyChanged("")) ---
+    public string Settings => T("settings");
+    public string SettingsSearchHint => T("settings.search");
+    public string SettingsSearchResults => T("settings.search.results");
+    public string SettingsSearchNoResults => T("settings.search.no_results");
+    public string NavGitHub => T("nav.github");
+    public string NavGitHubHint => T("nav.github.hint");
+    public string NavSearch => T("nav.search");
+    public string NavSearchHint => T("nav.search.hint");
+    public string NavAi => T("nav.ai");
+    public string NavAiHint => T("nav.ai.hint");
+    public string NavLanguage => T("nav.language");
+    public string NavLanguageHint => T("nav.language.hint");
+    public string NavAbout => T("nav.about");
+    public string NavAboutHint => T("nav.about.hint");
+
+    public string SearchTitle => T("search.title");
+    public string SearchDescription => T("search.description");
+    public string SearchEmpty => T("search.empty");
+    public string SearchEnable => T("search.enable");
+    public string SearchApiKey => T("search.api_key");
+    public string SearchApiKeyHint => T("search.api_key.hint");
+    public string SearchSaveKey => T("search.save_key");
+
+    public string LanguageTitle => T("language.title");
+    public string LanguageDescription => T("language.description");
+    public string LanguageDisplay => T("language.display");
+    public string LanguageDisplayHint => T("language.display.hint");
+    public string LangEnglish => T("language.en");
+    public string LangChinese => T("language.zh");
+
+    public string GitHubTitle => T("github.title");
+    public string GitHubDescription => T("github.description");
+    public string GitHubStatus => T("github.status");
+    public string GitHubRefresh => T("github.refresh");
+    public string GitHubConnect => T("github.connect");
+    public string GitHubCancel => T("github.cancel");
+    public string GitHubDisconnect => T("github.disconnect");
+    public string GitHubUserCode => T("github.user_code");
+    public string GitHubCopy => T("github.copy");
+    public string GitHubOpen => T("github.open");
+    public string GitHubClientId => T("github.client_id");
+    public string GitHubClientIdHint => T("github.client_id.hint");
+    public string GitHubApps => T("github.apps");
+    public string GitHubSave => T("github.save");
+    public string GitHubPat => T("github.pat");
+    public string GitHubPatHint => T("github.pat.hint");
+    public string GitHubSavePat => T("github.save_pat");
+
+    public string AiTitle => T("ai.title");
+    public string AiDescription => T("ai.description");
+    public string AiDeepSeekHint => T("ai.deepseek.hint");
+    public string AiKimiHint => T("ai.kimi.hint");
+    public string AiApiKey => T("ai.api_key");
+    public string AiApiKeyHint => T("ai.api_key.hint");
+    public string AiSaveKey => T("ai.save_key");
+    public string AiRefreshModels => T("ai.refresh_models");
+    public string AiModel => T("ai.model");
+    public string AiModelHint => T("ai.model.hint");
+    public string AiCaps => T("ai.caps");
+    public string AiCapsHint => T("ai.caps.hint");
+    public string AiCapChat => T("ai.caps.chat");
+    public string AiCapImage => T("ai.caps.image");
+    public string AiCapVideo => T("ai.caps.video");
+
+    public string AboutTitle => T("about.title");
+    public string AboutVersion => T("about.version");
+    public string AboutDeveloper => T("about.developer");
+
+    public string MainProjects => T("main.projects");
+    public string MainNewProject => T("main.new_project");
+    public string MainNewProjectTip => T("main.new_project.tip");
+    public string MainSearchHint => T("main.search.hint");
+    public string MainSearchSub => T("main.search.sub");
+    public string MainSearchProvider => T("main.search.provider");
+    public string MainSearchModel => T("main.search.model");
+    public string MainSearchPrecision => T("main.search.precision");
+    public string MainPrecisionQuick => T("main.precision.quick");
+    public string MainPrecisionNormal => T("main.precision.normal");
+    public string MainPrecisionDeep => T("main.precision.deep");
+    public string MainPrecisionMax => T("main.precision.max");
+    public string MainSettingsTip => T("main.settings.tip");
+    public string MainDeveloperPrefix => T("main.developer.prefix");
+    public string MainResearchHint => T("main.research.hint");
+    public string MainResearchQueryLabel => T("main.research.query");
+    public string MainResearchPending => T("main.research.pending");
+    public string MainResearchConfigLabel => T("main.research.config");
+    public string ResearchProgressTitle => T("research.progress.title");
+    public string ResearchEvidenceTitle => T("research.evidence.title");
+    public string ResearchSteps => T("research.steps");
+    public string ResearchCancel => T("research.cancel");
+    public string ResearchContinue => T("research.continue");
+    public string ResearchReplyHint => T("research.reply.hint");
+    public string ResearchSummary => T("research.summary");
+    public string ResearchKeywordsTitle => T("research.keywords.title");
+    public string ResearchFeedTitle => T("research.feed.title");
+    public string ResearchLockedTitle => T("research.locked.title");
+    public string ResearchAskTitle => T("research.ask.title");
+    public string ResearchAskOrType => T("research.ask.or_type");
+    public string ResearchLockedHint => T("research.locked.hint");
+    public string ResearchBusyHint => T("research.busy.hint");
+    public string ResearchReportTitle => T("research.report.title");
+
+    public string ProjectRename => T("project.rename");
+    public string ProjectTogglePin => T("project.toggle_pin");
+    public string ProjectDelete => T("project.delete");
+    public string ProjectMoreTip => T("project.more");
+
+    private static readonly Dictionary<string, string> En = new()
+    {
+        ["settings"] = "Settings",
+        ["settings.search"] = "Search settings",
+        ["settings.search.results"] = "Search results",
+        ["settings.search.no_results"] = "No settings match “{0}”",
+        ["ai.deepseek.name"] = "DeepSeek",
+        ["ai.kimi.name"] = "Kimi / Moonshot",
+        ["nav.github"] = "GitHub",
+        ["nav.github.hint"] = "Sign in and tokens",
+        ["nav.search"] = "Search",
+        ["nav.search.hint"] = "Research modules",
+        ["nav.ai"] = "AI",
+        ["nav.ai.hint"] = "Providers and API keys",
+        ["nav.language"] = "Language",
+        ["nav.language.hint"] = "Display language",
+        ["nav.about"] = "About",
+        ["nav.about.hint"] = "Version and credits",
+        ["search.title"] = "Search modules",
+        ["search.description"] =
+            "Choose which network research modules are enabled for prompts and tools.",
+        ["search.empty"] = "No search modules are registered yet.",
+        ["search.enable"] = "Enabled",
+        ["search.api_key"] = "API key",
+        ["search.api_key.hint"] = "Stored encrypted locally. Used as Authorization: Bearer for this module.",
+        ["search.save_key"] = "Save key",
+        ["search.key.empty"] = "Paste an API key first.",
+        ["search.key.saving"] = "Saving API key…",
+        ["search.key.saved"] = "API key saved.",
+        ["search.auth.none"] = "No API key required",
+        ["search.auth.ready"] = "Credentials configured",
+        ["search.auth.needed"] = "Credentials needed (see GitHub settings)",
+        ["search.auth.apikey_needed"] = "API key needed",
+        ["language.title"] = "Language",
+        ["language.description"] = "Choose the language used across XScope. Default is English.",
+        ["language.display"] = "Display language",
+        ["language.display.hint"] = "Applies immediately to the app interface.",
+        ["language.en"] = "English",
+        ["language.zh"] = "中文（简体）",
+        ["github.title"] = "GitHub",
+        ["github.description"] = "Connect an account for research modules that need GitHub access.",
+        ["github.status"] = "Status",
+        ["github.refresh"] = "Refresh",
+        ["github.connect"] = "Connect",
+        ["github.cancel"] = "Cancel",
+        ["github.disconnect"] = "Disconnect",
+        ["github.user_code"] = "User code",
+        ["github.copy"] = "Copy",
+        ["github.open"] = "Open GitHub",
+        ["github.client_id"] = "OAuth Client ID",
+        ["github.client_id.hint"] = "Required for Device Flow. Enable Device Flow on the GitHub OAuth App.",
+        ["github.apps"] = "GitHub Apps",
+        ["github.save"] = "Save",
+        ["github.pat"] = "Personal access token",
+        ["github.pat.hint"] = "Optional fallback when Device Flow is unavailable.",
+        ["github.save_pat"] = "Save PAT",
+        ["ai.title"] = "AI",
+        ["ai.description"] =
+            "Add an API key for each provider. Models are loaded from the vendor API, then choose a default.",
+        ["ai.deepseek.hint"] = "OpenAI-compatible · api.deepseek.com",
+        ["ai.kimi.hint"] = "OpenAI-compatible · api.moonshot.cn",
+        ["ai.api_key"] = "API key",
+        ["ai.api_key.hint"] = "Stored in the local encrypted secrets box. Never uploaded to XScope servers.",
+        ["ai.save_key"] = "Save & fetch models",
+        ["ai.refresh_models"] = "Refresh models",
+        ["ai.model"] = "Model",
+        ["ai.model.hint"] = "Pulled from the provider /models API after the key is saved.",
+        ["ai.caps"] = "Model capabilities",
+        ["ai.caps.hint"] = "What inputs this provider’s models may accept. Applied to all models under the provider.",
+        ["ai.caps.chat"] = "Text input",
+        ["ai.caps.image"] = "Image input",
+        ["ai.caps.video"] = "Video input",
+        ["ai.caps.saved"] = "Model capabilities saved.",
+        ["ai.key.configured"] = "API key saved",
+        ["ai.key.missing"] = "No API key yet",
+        ["ai.key.empty"] = "Paste an API key first.",
+        ["ai.key.saving"] = "Saving key and fetching models…",
+        ["ai.key.saved"] = "Key saved. Models updated.",
+        ["ai.models.refreshing"] = "Fetching models…",
+        ["ai.models.refreshed"] = "Model list updated.",
+        ["ai.model.saved"] = "Preferred model saved.",
+        ["about.title"] = "About",
+        ["about.version"] = "Version",
+        ["about.developer"] = "Developer",
+        ["main.projects"] = "Projects",
+        ["main.new_project"] = "New project",
+        ["main.new_project.tip"] = "Return to a fresh home. A library entry is created only after you search.",
+        ["main.search.hint"] = "Search the network",
+        ["main.search.sub"] = "Press Enter to start · Shift+Enter for a new line",
+        ["main.search.empty"] = "Enter a search to begin.",
+        ["main.search.provider"] = "Provider",
+        ["main.search.model"] = "Model",
+        ["main.search.precision"] = "Precision",
+        ["main.search.need_ai"] =
+            "No usable AI provider yet. Open Settings, add an API key, and refresh models.",
+        ["main.precision.quick"] = "Quick",
+        ["main.precision.normal"] = "Normal",
+        ["main.precision.deep"] = "Deep",
+        ["main.precision.max"] = "Maximum",
+        ["main.precision.quick.token"] = "Tokens: low",
+        ["main.precision.quick.time"] = "Time: ~seconds",
+        ["main.precision.quick.detail"] = "Single-pass skim — fastest answers, lighter coverage.",
+        ["main.precision.normal.token"] = "Tokens: medium",
+        ["main.precision.normal.time"] = "Time: ~1–3 min",
+        ["main.precision.normal.detail"] = "Balanced research for everyday questions.",
+        ["main.precision.deep.token"] = "Tokens: high",
+        ["main.precision.deep.time"] = "Time: ~5–15 min",
+        ["main.precision.deep.detail"] = "Multi-step retrieval and cross-checking across sources.",
+        ["main.precision.max.token"] = "Tokens: very high",
+        ["main.precision.max.time"] = "Time: 15 min+",
+        ["main.precision.max.detail"] =
+            "Maximum depth — exhaustive passes, higher cost, longest wait.",
+        ["main.settings.tip"] = "Settings",
+        ["main.developer.prefix"] = "Developer · ",
+        ["main.research.hint"] = "Research project",
+        ["main.research.query"] = "Current query",
+        ["main.research.config"] = "Provider / model / precision",
+        ["main.research.pending"] = "Requirements discovery is running — watch keywords, hits, and thinking on the right.",
+        ["main.research.ready"] = "Project ready.",
+        ["main.research.queued"] = "Query updated for this project.",
+        ["research.progress.title"] = "Live discovery",
+        ["research.evidence.title"] = "Found content",
+        ["research.steps"] = "Phase log",
+        ["research.cancel"] = "Cancel",
+        ["research.continue"] = "Continue",
+        ["research.reply.hint"] = "Your answer",
+        ["research.summary"] = "Summary",
+        ["research.keywords.title"] = "Search keywords",
+        ["research.feed.title"] = "Thinking & activity",
+        ["research.locked.title"] = "Requirements locked",
+        ["research.ask.title"] = "Help us narrow your research",
+        ["research.ask.or_type"] = "Or write your own focus",
+        ["research.locked.hint"] = "This focus is locked — deep research continues automatically.",
+        ["research.busy.hint"] = "Deep research in progress — activity streams on the right.",
+        ["research.report.title"] = "Research report",
+        ["research.status.starting"] = "Starting…",
+        ["research.status.discovering"] = "Discovering your research need…",
+        ["research.status.thinking"] = "Model thinking…",
+        ["research.status.searching"] = "Searching…",
+        ["research.status.running"] = "Working…",
+        ["research.status.waiting"] = "Waiting for your input",
+        ["research.status.pick_or_type"] = "Pick a direction above, or type a short note then Continue.",
+        ["research.status.researching"] = "Deep research in progress…",
+        ["research.status.synthesize"] = "Writing the report…",
+        ["research.status.completed"] = "Research complete",
+        ["research.status.locked"] = "Requirements locked",
+        ["research.status.cancelled"] = "Cancelled",
+        ["research.status.error"] = "Failed",
+        ["research.clarify.default"] = "Please clarify what you need.",
+        ["research.evidence.collected"] = "Collected",
+        ["research.evidence.count"] = "{0} hits",
+        ["research.feed.thinking"] = "Thinking",
+        ["research.feed.keyword"] = "Keyword",
+        ["research.feed.ask_user"] = "Asking you",
+        ["research.feed.user_reply"] = "Your reply",
+        ["research.feed.locked"] = "Need locked",
+        ["research.feed.next_step"] = "Deep research",
+        ["research.feed.next_stub"] = "Next step",
+        ["research.feed.synthesize"] = "Synthesis",
+        ["research.feed.search_fail"] = "Search failed",
+        ["research.phase.start"] = "Started",
+        ["research.phase.clarify"] = "Clarify",
+        ["research.phase.plan"] = "Plan",
+        ["research.phase.searching"] = "Searching",
+        ["research.phase.evidence"] = "Evidence",
+        ["research.phase.directions"] = "Directions",
+        ["research.phase.thinking"] = "Thinking",
+        ["research.phase.keyword"] = "Keyword",
+        ["research.phase.requirements_locked"] = "Locked",
+        ["research.phase.next_step"] = "Next",
+        ["research.phase.synthesize"] = "Synthesize",
+        ["research.phase.final"] = "Final",
+        ["research.phase.cancelled"] = "Cancelled",
+        ["research.phase.error"] = "Error",
+        ["project.pinned"] = "Pinned",
+        ["project.recent"] = "Recent",
+        ["project.rename"] = "Rename",
+        ["project.rename.prompt"] = "Project title",
+        ["project.rename.ok"] = "Save",
+        ["project.rename.cancel"] = "Cancel",
+        ["project.toggle_pin"] = "Pin / unpin",
+        ["project.delete"] = "Delete",
+        ["project.more"] = "More actions",
+        ["project.delete.confirm"] = "Delete project “{0}”? This cannot be undone.",
+        ["gh.checking"] = "Checking…",
+        ["gh.sdk_unavailable"] = "SDK unavailable",
+        ["gh.missing_client"] =
+            "Add a GitHub OAuth Client ID first (enable Device Flow on the app), then Save.",
+        ["gh.waiting"] = "Waiting for GitHub authorization…",
+        ["gh.connect_failed"] = "Connect failed",
+        ["gh.cancelled"] = "Cancelled",
+        ["gh.disconnected"] = "Disconnected.",
+        ["gh.pat_empty"] = "Paste a GitHub PAT first.",
+        ["gh.pat_stored"] = "PAT stored in encrypted secrets.",
+        ["gh.pat_disconnected"] = "PAT save returned disconnected.",
+        ["gh.code_copied"] = "User code copied.",
+        ["gh.connected"] = "GitHub connected.",
+        ["gh.slow"] = "Polling slowed down by GitHub…",
+        ["gh.auth_failed"] = "Authorization failed",
+        ["gh.cancelled_timeout"] = "Cancelled / timed out",
+        ["gh.connected_as"] = "Connected as @{0}",
+        ["gh.connected_plain"] = "Connected to GitHub",
+        ["gh.not_connected"] = "Not connected",
+        ["gh.ready"] = "Ready for OAuth Device Flow.",
+        ["gh.need_client"] =
+            "Missing Client ID: paste your GitHub OAuth App Client ID below and enable Device Flow.",
+        ["gh.saved_client"] = "Saved Client ID to {0}",
+        ["gh.enter_code"] = "Enter code {0} at {1}",
+    };
+
+    private static readonly Dictionary<string, string> Zh = new()
+    {
+        ["settings"] = "设置",
+        ["settings.search"] = "搜索设置",
+        ["settings.search.results"] = "搜索结果",
+        ["settings.search.no_results"] = "没有与“{0}”匹配的设置",
+        ["ai.deepseek.name"] = "DeepSeek",
+        ["ai.kimi.name"] = "Kimi / Moonshot",
+        ["nav.github"] = "GitHub",
+        ["nav.github.hint"] = "登录与令牌",
+        ["nav.search"] = "搜索",
+        ["nav.search.hint"] = "调研模块",
+        ["nav.ai"] = "AI",
+        ["nav.ai.hint"] = "提供商与 API 密钥",
+        ["nav.language"] = "语言",
+        ["nav.language.hint"] = "界面显示语言",
+        ["nav.about"] = "关于",
+        ["nav.about.hint"] = "版本与致谢",
+        ["search.title"] = "搜索模块",
+        ["search.description"] = "选择启用哪些网络调研搜索模块（用于提示词与工具）。",
+        ["search.empty"] = "尚未注册任何搜索模块。",
+        ["search.enable"] = "启用",
+        ["search.api_key"] = "API 密钥",
+        ["search.api_key.hint"] = "本地加密保存，以 Authorization: Bearer 调用该模块。",
+        ["search.save_key"] = "保存密钥",
+        ["search.key.empty"] = "请先粘贴 API 密钥。",
+        ["search.key.saving"] = "正在保存 API 密钥…",
+        ["search.key.saved"] = "API 密钥已保存。",
+        ["search.auth.none"] = "无需 API 密钥",
+        ["search.auth.ready"] = "凭据已配置",
+        ["search.auth.needed"] = "需要凭据（见 GitHub 设置）",
+        ["search.auth.apikey_needed"] = "需要 API 密钥",
+        ["language.title"] = "语言",
+        ["language.description"] = "选择 XScope 的界面语言。默认英文。",
+        ["language.display"] = "显示语言",
+        ["language.display.hint"] = "更改后立即应用到界面。",
+        ["language.en"] = "English",
+        ["language.zh"] = "中文（简体）",
+        ["github.title"] = "GitHub",
+        ["github.description"] = "连接账号，供需要 GitHub 访问的调研模块使用。",
+        ["github.status"] = "状态",
+        ["github.refresh"] = "刷新",
+        ["github.connect"] = "连接",
+        ["github.cancel"] = "取消",
+        ["github.disconnect"] = "断开",
+        ["github.user_code"] = "用户代码",
+        ["github.copy"] = "复制",
+        ["github.open"] = "打开 GitHub",
+        ["github.client_id"] = "OAuth Client ID",
+        ["github.client_id.hint"] = "Device Flow 必填。请在 GitHub OAuth 应用中启用 Device Flow。",
+        ["github.apps"] = "GitHub Apps",
+        ["github.save"] = "保存",
+        ["github.pat"] = "个人访问令牌",
+        ["github.pat.hint"] = "当 Device Flow 不可用时的可选回退。",
+        ["github.save_pat"] = "保存 PAT",
+        ["ai.title"] = "AI",
+        ["ai.description"] = "为每个提供商填写 API Key。模型列表从厂商 API 拉取后，再选择默认模型。",
+        ["ai.deepseek.hint"] = "OpenAI 兼容 · api.deepseek.com",
+        ["ai.kimi.hint"] = "OpenAI 兼容 · api.moonshot.cn",
+        ["ai.api_key"] = "API 密钥",
+        ["ai.api_key.hint"] = "保存在本地加密机密库，不会上传到 XScope 服务器。",
+        ["ai.save_key"] = "保存并拉取模型",
+        ["ai.refresh_models"] = "刷新模型",
+        ["ai.model"] = "模型",
+        ["ai.model.hint"] = "保存密钥后从提供商 /models 接口拉取。",
+        ["ai.caps"] = "模型能力",
+        ["ai.caps.hint"] = "该供应商模型可接受的输入类型，会应用到其下全部模型。",
+        ["ai.caps.chat"] = "文本输入",
+        ["ai.caps.image"] = "图片输入",
+        ["ai.caps.video"] = "视频输入",
+        ["ai.caps.saved"] = "已保存模型能力。",
+        ["ai.key.configured"] = "已保存 API 密钥",
+        ["ai.key.missing"] = "尚未配置 API 密钥",
+        ["ai.key.empty"] = "请先粘贴 API 密钥。",
+        ["ai.key.saving"] = "正在保存密钥并拉取模型…",
+        ["ai.key.saved"] = "密钥已保存，模型已更新。",
+        ["ai.models.refreshing"] = "正在拉取模型…",
+        ["ai.models.refreshed"] = "模型列表已更新。",
+        ["ai.model.saved"] = "已保存首选模型。",
+        ["about.title"] = "关于",
+        ["about.version"] = "版本",
+        ["about.developer"] = "开发者",
+        ["main.projects"] = "项目",
+        ["main.new_project"] = "新建项目",
+        ["main.new_project.tip"] = "回到空白主页。只有发出搜索后才会写入项目库。",
+        ["main.search.hint"] = "搜索网络",
+        ["main.search.sub"] = "按 Enter 开始调研 · Shift+Enter 换行",
+        ["main.search.empty"] = "请输入搜索内容以开始。",
+        ["main.search.provider"] = "供应商",
+        ["main.search.model"] = "模型",
+        ["main.search.precision"] = "精度",
+        ["main.search.need_ai"] = "暂无可用的 AI 供应商。请到设置中填写 API 密钥并刷新模型。",
+        ["main.precision.quick"] = "快速",
+        ["main.precision.normal"] = "普通",
+        ["main.precision.deep"] = "深度",
+        ["main.precision.max"] = "最大",
+        ["main.precision.quick.token"] = "Token：低",
+        ["main.precision.quick.time"] = "耗时：约数秒",
+        ["main.precision.quick.detail"] = "单轮快扫 — 最快出结果，覆盖面较浅。",
+        ["main.precision.normal.token"] = "Token：中",
+        ["main.precision.normal.time"] = "耗时：约 1–3 分钟",
+        ["main.precision.normal.detail"] = "日常调研的均衡档位。",
+        ["main.precision.deep.token"] = "Token：高",
+        ["main.precision.deep.time"] = "耗时：约 5–15 分钟",
+        ["main.precision.deep.detail"] = "多步检索与交叉核验，适合认真研究。",
+        ["main.precision.max.token"] = "Token：很高",
+        ["main.precision.max.time"] = "耗时：15 分钟以上",
+        ["main.precision.max.detail"] = "最大深度 — 穷尽式多轮，成本与等待最高。",
+        ["main.settings.tip"] = "设置",
+        ["main.developer.prefix"] = "开发者 · ",
+        ["main.research.hint"] = "调研项目",
+        ["main.research.query"] = "当前查询",
+        ["main.research.config"] = "供应商 / 模型 / 精度",
+        ["main.research.pending"] = "正在做需求确定：右侧实时显示关键词、命中内容与模型思考。",
+        ["main.research.ready"] = "项目已就绪。",
+        ["main.research.queued"] = "已更新本项目的查询。",
+        ["research.progress.title"] = "实时发现",
+        ["research.evidence.title"] = "搜到的内容",
+        ["research.steps"] = "阶段日志",
+        ["research.cancel"] = "取消",
+        ["research.continue"] = "继续",
+        ["research.reply.hint"] = "你的回答",
+        ["research.summary"] = "总结",
+        ["research.keywords.title"] = "搜索关键词",
+        ["research.feed.title"] = "思考与动态",
+        ["research.locked.title"] = "需求已锁定",
+        ["research.ask.title"] = "请选择调研切入点",
+        ["research.ask.or_type"] = "或用自己的话补充",
+        ["research.locked.hint"] = "需求已锁定，正在自动进入深度调研。",
+        ["research.busy.hint"] = "深度调研进行中 — 右侧实时显示思考与动态。",
+        ["research.report.title"] = "调研报告",
+        ["research.status.starting"] = "正在启动…",
+        ["research.status.discovering"] = "正在确定调研需求…",
+        ["research.status.thinking"] = "模型思考中…",
+        ["research.status.searching"] = "正在搜索…",
+        ["research.status.running"] = "进行中…",
+        ["research.status.waiting"] = "等待你的输入",
+        ["research.status.pick_or_type"] = "请先点选上方方向，或输入补充说明后再点继续。",
+        ["research.status.researching"] = "深度调研进行中…",
+        ["research.status.synthesize"] = "正在撰写报告…",
+        ["research.status.completed"] = "调研完成",
+        ["research.status.locked"] = "需求已锁定",
+        ["research.status.cancelled"] = "已取消",
+        ["research.status.error"] = "失败",
+        ["research.clarify.default"] = "请澄清你的需求。",
+        ["research.evidence.collected"] = "已收录",
+        ["research.evidence.count"] = "{0} 条结果",
+        ["research.feed.thinking"] = "思考",
+        ["research.feed.keyword"] = "关键词",
+        ["research.feed.ask_user"] = "向你提问",
+        ["research.feed.user_reply"] = "你的回复",
+        ["research.feed.locked"] = "需求锁定",
+        ["research.feed.next_step"] = "深度调研",
+        ["research.feed.next_stub"] = "下一步",
+        ["research.feed.synthesize"] = "综合",
+        ["research.feed.search_fail"] = "搜索失败",
+        ["research.phase.start"] = "开始",
+        ["research.phase.clarify"] = "澄清",
+        ["research.phase.plan"] = "规划",
+        ["research.phase.searching"] = "搜索中",
+        ["research.phase.evidence"] = "证据",
+        ["research.phase.directions"] = "方向",
+        ["research.phase.thinking"] = "思考",
+        ["research.phase.keyword"] = "关键词",
+        ["research.phase.requirements_locked"] = "已锁定",
+        ["research.phase.next_step"] = "下一步",
+        ["research.phase.synthesize"] = "综合",
+        ["research.phase.final"] = "完成",
+        ["research.phase.cancelled"] = "已取消",
+        ["research.phase.error"] = "错误",
+        ["project.pinned"] = "已置顶",
+        ["project.recent"] = "最近",
+        ["project.rename"] = "重命名",
+        ["project.rename.prompt"] = "项目标题",
+        ["project.rename.ok"] = "保存",
+        ["project.rename.cancel"] = "取消",
+        ["project.toggle_pin"] = "置顶 / 取消置顶",
+        ["project.delete"] = "删除",
+        ["project.more"] = "更多操作",
+        ["project.delete.confirm"] = "删除项目“{0}”？此操作不可撤销。",
+        ["gh.checking"] = "检查中…",
+        ["gh.sdk_unavailable"] = "SDK 不可用",
+        ["gh.missing_client"] =
+            "请先填写 GitHub OAuth Client ID（并在应用设置中启用 Device Flow），然后保存。",
+        ["gh.waiting"] = "等待 GitHub 授权…",
+        ["gh.connect_failed"] = "连接失败",
+        ["gh.cancelled"] = "已取消",
+        ["gh.disconnected"] = "已断开连接。",
+        ["gh.pat_empty"] = "请先粘贴 GitHub PAT。",
+        ["gh.pat_stored"] = "PAT 已存入加密机密库。",
+        ["gh.pat_disconnected"] = "PAT 保存后仍显示未连接。",
+        ["gh.code_copied"] = "用户代码已复制。",
+        ["gh.connected"] = "GitHub 已连接。",
+        ["gh.slow"] = "GitHub 要求降低轮询频率…",
+        ["gh.auth_failed"] = "授权失败",
+        ["gh.cancelled_timeout"] = "已取消 / 超时",
+        ["gh.connected_as"] = "已连接为 @{0}",
+        ["gh.connected_plain"] = "已连接 GitHub",
+        ["gh.not_connected"] = "未连接",
+        ["gh.ready"] = "可开始 OAuth Device Flow。",
+        ["gh.need_client"] =
+            "缺少 Client ID：请在下方填写 GitHub OAuth App 的 Client ID，并启用 Device Flow。",
+        ["gh.saved_client"] = "已保存 Client ID 到 {0}",
+        ["gh.enter_code"] = "请在 {1} 输入代码 {0}",
+    };
+}

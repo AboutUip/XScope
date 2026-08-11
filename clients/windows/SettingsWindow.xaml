@@ -1,0 +1,731 @@
+<Window x:Class="XScope.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:controls="clr-namespace:XScope.Controls"
+        xmlns:vm="clr-namespace:XScope.ViewModels"
+        Title="{Binding L.Settings}"
+        Height="680"
+        Width="960"
+        MinHeight="520"
+        MinWidth="780"
+        WindowStartupLocation="CenterOwner"
+        Icon="pack://application:,,,/Assets/xscope.ico"
+        Background="#FFFFFF"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        TextElement.Foreground="#202124"
+        Loaded="OnLoaded">
+    <Window.Resources>
+        <Style x:Key="SettingsNavButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="8,2" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="24"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#EFEFEF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SettingsRow" TargetType="Border">
+            <Setter Property="Padding" Value="0,16" />
+            <Setter Property="BorderBrush" Value="#E8EAED" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+        </Style>
+        <!-- Collapsible settings row: click PART_Header (code) to toggle. -->
+        <Style TargetType="{x:Type controls:SettingsAccordionItem}">
+            <Setter Property="IsExpanded" Value="False" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#E8EAED" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type controls:SettingsAccordionItem}">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <DockPanel LastChildFill="True">
+                                <Border x:Name="PART_Header"
+                                        DockPanel.Dock="Top"
+                                        Background="Transparent"
+                                        MinHeight="52"
+                                        Cursor="Hand"
+                                        Padding="0,14">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ContentPresenter Grid.Column="0"
+                                                          ContentSource="Header"
+                                                          Margin="0,0,12,0"
+                                                          VerticalAlignment="Center"
+                                                          RecognizesAccessKey="True" />
+                                        <materialDesign:PackIcon x:Name="Chevron"
+                                                                 Grid.Column="1"
+                                                                 Kind="ChevronDown"
+                                                                 Width="20"
+                                                                 Height="20"
+                                                                 VerticalAlignment="Center"
+                                                                 Foreground="#5F6368"
+                                                                 Margin="4,0,4,0" />
+                                    </Grid>
+                                </Border>
+                                <ContentPresenter x:Name="PART_Content"
+                                                  ContentSource="Content"
+                                                  Visibility="Collapsed"
+                                                  Margin="0,0,0,16" />
+                            </DockPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="PART_Content" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Chevron" Property="Kind" Value="ChevronUp" />
+                            </Trigger>
+                            <Trigger Property="ForceExpanded" Value="True">
+                                <Setter Property="IsExpanded" Value="True" />
+                            </Trigger>
+                            <Trigger SourceName="PART_Header" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="PART_Header" Property="Background" Value="#F8F9FA" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SettingsExpanderHeaderTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#202124" />
+        </Style>
+        <Style x:Key="SettingsExpanderHeaderHint" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#5F6368" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="260" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="#F8F9FA" BorderBrush="#E8EAED" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top"
+                           Text="{Binding L.Settings}"
+                           FontSize="22"
+                           FontWeight="Normal"
+                           Margin="24,24,16,20"
+                           Foreground="#202124" />
+
+                <StackPanel Margin="8,0">
+                    <Button Command="{Binding SelectSectionCommand}"
+                            CommandParameter="{x:Static vm:SettingsSection.GitHub}"
+                            Visibility="{Binding ShowNavGitHub, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsGitHub}" Value="True">
+                                        <Setter Property="Background" Value="#E8F0FE" />
+                                        <Setter Property="Foreground" Value="#1967D2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel>
+                            <TextBlock Text="{Binding L.NavGitHub}" FontSize="14" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding L.NavGitHubHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding SelectSectionCommand}"
+                            CommandParameter="{x:Static vm:SettingsSection.Search}"
+                            Visibility="{Binding ShowNavSearch, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSearch}" Value="True">
+                                        <Setter Property="Background" Value="#E8F0FE" />
+                                        <Setter Property="Foreground" Value="#1967D2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel>
+                            <TextBlock Text="{Binding L.NavSearch}" FontSize="14" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding L.NavSearchHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding SelectSectionCommand}"
+                            CommandParameter="{x:Static vm:SettingsSection.Ai}"
+                            Visibility="{Binding ShowNavAi, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAi}" Value="True">
+                                        <Setter Property="Background" Value="#E8F0FE" />
+                                        <Setter Property="Foreground" Value="#1967D2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel>
+                            <TextBlock Text="{Binding L.NavAi}" FontSize="14" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding L.NavAiHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding SelectSectionCommand}"
+                            CommandParameter="{x:Static vm:SettingsSection.Language}"
+                            Visibility="{Binding ShowNavLanguage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsLanguage}" Value="True">
+                                        <Setter Property="Background" Value="#E8F0FE" />
+                                        <Setter Property="Foreground" Value="#1967D2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel>
+                            <TextBlock Text="{Binding L.NavLanguage}" FontSize="14" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding L.NavLanguageHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding SelectSectionCommand}"
+                            CommandParameter="{x:Static vm:SettingsSection.About}"
+                            Visibility="{Binding ShowNavAbout, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SettingsNavButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAbout}" Value="True">
+                                        <Setter Property="Background" Value="#E8F0FE" />
+                                        <Setter Property="Foreground" Value="#1967D2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel>
+                            <TextBlock Text="{Binding L.NavAbout}" FontSize="14" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding L.NavAboutHint}" FontSize="12" Opacity="0.7" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="40,28,40,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Height="44"
+                    CornerRadius="22"
+                    BorderBrush="#DFE1E5"
+                    BorderThickness="1"
+                    Background="#FFFFFF"
+                    Margin="0,0,0,24"
+                    Padding="14,0">
+                <DockPanel>
+                    <materialDesign:PackIcon Kind="Magnify"
+                                             Width="18"
+                                             Height="18"
+                                             VerticalAlignment="Center"
+                                             Foreground="#9AA0A6"
+                                             Margin="0,0,10,0" />
+                    <Button DockPanel.Dock="Right"
+                            Style="{StaticResource MaterialDesignIconButton}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Command="{Binding ClearSearchCommand}"
+                            Visibility="{Binding IsSearching, Converter={StaticResource XScopeBoolToVis}}"
+                            ToolTip="Clear">
+                        <materialDesign:PackIcon Kind="Close" Width="16" Height="16" Foreground="#5F6368" />
+                    </Button>
+                    <TextBox x:Name="SettingsSearchBox"
+                             Text="{Binding SettingsSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             VerticalContentAlignment="Center"
+                             FontSize="14"
+                             materialDesign:HintAssist.Hint="{Binding L.SettingsSearchHint}"
+                             materialDesign:HintAssist.IsFloating="False"
+                             materialDesign:TextFieldAssist.DecorationVisibility="Collapsed"
+                             TextChanged="OnSettingsSearchTextChanged" />
+                </DockPanel>
+            </Border>
+
+            <!-- Section panels below; search results overlay is declared last. -->
+
+            <!-- GitHub -->
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          Visibility="{Binding IsGitHub, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding L.GitHubTitle}" FontSize="28" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding L.GitHubDescription}"
+                               FontSize="14"
+                               Foreground="#5F6368"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8" />
+
+                    <controls:SettingsAccordionItem ForceExpanded="{Binding GitHub.IsPolling}">
+                        <controls:SettingsAccordionItem.Header>
+                            <StackPanel>
+                                <TextBlock Text="{Binding L.GitHubStatus}" Style="{StaticResource SettingsExpanderHeaderTitle}" />
+                                <TextBlock Text="{Binding GitHub.StatusText}" Style="{StaticResource SettingsExpanderHeaderHint}" />
+                            </StackPanel>
+                        </controls:SettingsAccordionItem.Header>
+                        <StackPanel>
+                            <TextBlock Text="{Binding GitHub.DetailText}"
+                                       FontSize="12"
+                                       Foreground="#80868B"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8" />
+                            <TextBlock FontSize="11" Foreground="#9AA0A6" Margin="0,0,0,12" TextWrapping="Wrap">
+                                <Run Text="data_root - " />
+                                <Run Text="{Binding GitHub.DataRootText, Mode=OneWay}" />
+                            </TextBlock>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="{Binding L.GitHubRefresh}"
+                                        Command="{Binding GitHub.RefreshStatusCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,0"
+                                        IsEnabled="{Binding GitHub.IsBusy, Converter={StaticResource InvertBooleanConverter}}" />
+                                <Button Content="{Binding L.GitHubConnect}"
+                                        Command="{Binding GitHub.ConnectCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Margin="0,0,8,0"
+                                        Visibility="{Binding GitHub.IsConnected, Converter={StaticResource InvertBooleanToVisibilityConverter}}" />
+                                <Button Content="{Binding L.GitHubCancel}"
+                                        Command="{Binding GitHub.CancelPollCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,0"
+                                        Visibility="{Binding GitHub.IsPolling, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Button Content="{Binding L.GitHubDisconnect}"
+                                        Command="{Binding GitHub.DisconnectCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Visibility="{Binding GitHub.IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="0,14,0,0"
+                                        Visibility="{Binding GitHub.IsPolling, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock VerticalAlignment="Center"
+                                           Margin="0,0,8,0"
+                                           Text="{Binding L.GitHubUserCode}" />
+                                <TextBlock Text="{Binding GitHub.UserCode}"
+                                           FontWeight="SemiBold"
+                                           FontSize="18"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,12,0" />
+                                <Button Content="{Binding L.GitHubCopy}"
+                                        Command="{Binding GitHub.CopyUserCodeCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,0" />
+                                <Button Content="{Binding L.GitHubOpen}"
+                                        Command="{Binding GitHub.OpenVerificationUriCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </controls:SettingsAccordionItem>
+
+                    <controls:SettingsAccordionItem >
+                        <controls:SettingsAccordionItem.Header>
+                            <StackPanel>
+                                <TextBlock Text="{Binding L.GitHubClientId}" Style="{StaticResource SettingsExpanderHeaderTitle}" />
+                                <TextBlock Text="{Binding L.GitHubClientIdHint}" Style="{StaticResource SettingsExpanderHeaderHint}" />
+                            </StackPanel>
+                        </controls:SettingsAccordionItem.Header>
+                        <DockPanel LastChildFill="True">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
+                                <Button Content="{Binding L.GitHubApps}"
+                                        Command="{Binding GitHub.OpenOauthAppSettingsCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Margin="0,0,8,0" />
+                                <Button Content="{Binding L.GitHubSave}"
+                                        Command="{Binding GitHub.SaveClientIdCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}" />
+                            </StackPanel>
+                            <TextBox Text="{Binding GitHub.ClientId, UpdateSourceTrigger=PropertyChanged}"
+                                     materialDesign:HintAssist.Hint="Ov23li??Client ID"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" />
+                        </DockPanel>
+                    </controls:SettingsAccordionItem>
+
+                    <controls:SettingsAccordionItem  BorderThickness="0">
+                        <controls:SettingsAccordionItem.Header>
+                            <StackPanel>
+                                <TextBlock Text="{Binding L.GitHubPat}" Style="{StaticResource SettingsExpanderHeaderTitle}" />
+                                <TextBlock Text="{Binding L.GitHubPatHint}" Style="{StaticResource SettingsExpanderHeaderHint}" />
+                            </StackPanel>
+                        </controls:SettingsAccordionItem.Header>
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right"
+                                    Content="{Binding L.GitHubSavePat}"
+                                    Command="{Binding GitHub.SavePatCommand}"
+                                    Style="{StaticResource MaterialDesignRaisedButton}"
+                                    Margin="8,0,0,0" />
+                            <PasswordBox x:Name="PatBox"
+                                         materialDesign:HintAssist.Hint="ghp_??or fine-grained token"
+                                         Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
+                                         PasswordChanged="OnPatPasswordChanged" />
+                        </DockPanel>
+                    </controls:SettingsAccordionItem>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Search modules -->
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          Visibility="{Binding IsSearch, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding L.SearchTitle}" FontSize="28" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding L.SearchDescription}"
+                               FontSize="14"
+                               Foreground="#5F6368"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding SearchModulesEmptyText}"
+                               FontSize="14"
+                               Foreground="#5F6368"
+                               Margin="0,16,0,0"
+                               Visibility="{Binding HasSearchModules, Converter={StaticResource InvertBooleanToVisibilityConverter}}" />
+                    <ItemsControl ItemsSource="{Binding SearchModules}"
+                                  Visibility="{Binding HasSearchModules, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <controls:SettingsAccordionItem >
+                                        <controls:SettingsAccordionItem.Header>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" Style="{StaticResource SettingsExpanderHeaderTitle}" />
+                                                <TextBlock Text="{Binding AuthHint}"
+                                                           Style="{StaticResource SettingsExpanderHeaderHint}"
+                                                           Foreground="#1A73E8" />
+                                            </StackPanel>
+                                        </controls:SettingsAccordionItem.Header>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Description}"
+                                                       FontSize="12"
+                                                       Foreground="#5F6368"
+                                                       TextWrapping="Wrap" />
+                                            <StackPanel Margin="0,12,0,0"
+                                                        Visibility="{Binding SupportsApiKeyEntry, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock Text="{Binding DataContext.L.SearchApiKey, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding DataContext.L.SearchApiKeyHint, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                           FontSize="12"
+                                                           Foreground="#5F6368"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,2,0,8" />
+                                                <PasswordBox Margin="0,0,0,10"
+                                                             Padding="10,8"
+                                                             PasswordChanged="OnSearchApiKeyChanged"
+                                                             IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}" />
+                                                <Button Content="{Binding DataContext.L.SearchSaveKey, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        Command="{Binding SaveApiKeyCommand}"
+                                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                                        HorizontalAlignment="Left"
+                                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}" />
+                                                <TextBlock Text="{Binding StatusText}"
+                                                           FontSize="12"
+                                                           Foreground="#5F6368"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,8,0,0" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding ErrorText}"
+                                                       FontSize="12"
+                                                       Foreground="#D93025"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,8,0,0" />
+                                        </StackPanel>
+                                    </controls:SettingsAccordionItem>
+                                    <CheckBox Grid.Column="1"
+                                              VerticalAlignment="Top"
+                                              Margin="12,16,4,0"
+                                              Content="{Binding DataContext.L.SearchEnable, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              IsChecked="{Binding Enabled, Mode=TwoWay}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- AI -->
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          Visibility="{Binding IsAi, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding L.AiTitle}" FontSize="28" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding L.AiDescription}"
+                               FontSize="14"
+                               Foreground="#5F6368"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8" />
+                    <ItemsControl ItemsSource="{Binding AiProviders}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <controls:SettingsAccordionItem >
+                                    <controls:SettingsAccordionItem.Header>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource SettingsExpanderHeaderTitle}" />
+                                            <TextBlock Text="{Binding SecretHint}" Style="{StaticResource SettingsExpanderHeaderHint}" />
+                                        </StackPanel>
+                                    </controls:SettingsAccordionItem.Header>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding DataContext.L.AiApiKey, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding DataContext.L.AiApiKeyHint, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   FontSize="12"
+                                                   Foreground="#5F6368"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,2,0,8" />
+                                        <PasswordBox Margin="0,0,0,10"
+                                                     Padding="10,8"
+                                                     PasswordChanged="OnAiApiKeyChanged"
+                                                     IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                            <Button Content="{Binding DataContext.L.AiSaveKey, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    Command="{Binding SaveApiKeyCommand}"
+                                                    Style="{StaticResource MaterialDesignRaisedButton}"
+                                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}"
+                                                    Margin="0,0,8,0" />
+                                            <Button Content="{Binding DataContext.L.AiRefreshModels, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    Command="{Binding RefreshModelsCommand}"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}" />
+                                        </StackPanel>
+
+                                        <TextBlock Text="{Binding DataContext.L.AiModel, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding DataContext.L.AiModelHint, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   FontSize="12"
+                                                   Foreground="#5F6368"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,2,0,8" />
+                                        <ComboBox ItemsSource="{Binding Models}"
+                                                  SelectedItem="{Binding SelectedModel, Mode=TwoWay}"
+                                                  DisplayMemberPath="DisplayName"
+                                                  IsEnabled="{Binding HasModels}"
+                                                  FontSize="14"
+                                                  Padding="12,10"
+                                                  MaxWidth="420"
+                                                  HorizontalAlignment="Left" />
+
+                                        <TextBlock Text="{Binding DataContext.L.AiCaps, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,16,0,0" />
+                                        <TextBlock Text="{Binding DataContext.L.AiCapsHint, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   FontSize="12"
+                                                   Foreground="#5F6368"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,2,0,8" />
+                                        <StackPanel>
+                                            <CheckBox Content="{Binding DataContext.L.AiCapChat, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                      IsChecked="{Binding CapChat, Mode=OneWay}"
+                                                      IsEnabled="False"
+                                                      Margin="0,0,0,6" />
+                                            <CheckBox Content="{Binding DataContext.L.AiCapImage, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                      IsChecked="{Binding CapImageInput, Mode=TwoWay}"
+                                                      IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}"
+                                                      Margin="0,0,0,6" />
+                                            <CheckBox Content="{Binding DataContext.L.AiCapVideo, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                      IsChecked="{Binding CapVideoInput, Mode=TwoWay}"
+                                                      IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBooleanConverter}}" />
+                                        </StackPanel>
+
+                                        <TextBlock Text="{Binding StatusText}"
+                                                   FontSize="12"
+                                                   Foreground="#5F6368"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,10,0,0" />
+                                    </StackPanel>
+                                </controls:SettingsAccordionItem>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Language -->
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          Visibility="{Binding IsLanguage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding L.LanguageTitle}" FontSize="28" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding L.LanguageDescription}"
+                               FontSize="14"
+                               Foreground="#5F6368"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8" />
+                    <Border Style="{StaticResource SettingsRow}" BorderThickness="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="260" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Text="{Binding L.LanguageDisplay}" FontSize="14" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding L.LanguageDisplayHint}"
+                                           FontSize="12"
+                                           Foreground="#5F6368"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1"
+                                      VerticalAlignment="Center"
+                                      ItemsSource="{Binding LanguageChoices}"
+                                      SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}"
+                                      DisplayMemberPath="DisplayName"
+                                      FontSize="14"
+                                      Padding="12,10" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- About -->
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          Visibility="{Binding IsAbout, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding L.AboutTitle}" FontSize="28" Margin="0,0,0,8" />
+                    <Border Style="{StaticResource SettingsRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding L.AboutVersion}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding VersionLabel}"
+                                       FontSize="14"
+                                       Foreground="#5F6368"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}" BorderThickness="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding L.AboutDeveloper}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding DeveloperLabel}"
+                                       FontSize="14"
+                                       Foreground="#5F6368"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Search results: last sibling + ZIndex so section panels cannot cover it -->
+            <Border Grid.Row="1"
+                    Background="#FFFFFF"
+                    Panel.ZIndex="20"
+                    Visibility="{Binding IsSearching, Converter={StaticResource XScopeBoolToVis}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Left" Margin="0,0,0,24">
+                        <TextBlock Text="{Binding L.SettingsSearchResults}"
+                                   FontSize="28"
+                                   Margin="0,0,0,8" />
+                        <TextBlock Text="{Binding SearchEmptyText}"
+                                   FontSize="14"
+                                   Foreground="#5F6368"
+                                   TextWrapping="Wrap"
+                                   Margin="0,16,0,0"
+                                   Visibility="{Binding HasSearchResults, Converter={StaticResource XScopeInvertBoolToVis}}" />
+
+                        <ItemsControl ItemsSource="{Binding SearchResults}"
+                                      Visibility="{Binding HasSearchResults, Converter={StaticResource XScopeBoolToVis}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Command="{Binding DataContext.OpenSearchHitCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"
+                                            HorizontalContentAlignment="Stretch"
+                                            Cursor="Hand"
+                                            Margin="0,0,0,4">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="Bd"
+                                                        Background="Transparent"
+                                                        CornerRadius="12"
+                                                        Padding="12,14"
+                                                        BorderBrush="#E8EAED"
+                                                        BorderThickness="0,0,0,1">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#202124" />
+                                            <TextBlock Text="{Binding Category}"
+                                                       FontSize="12"
+                                                       Foreground="#1A73E8"
+                                                       Margin="0,4,0,0" />
+                                            <TextBlock Text="{Binding Snippet}"
+                                                       FontSize="12"
+                                                       Foreground="#5F6368"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,702 @@
+﻿<Window x:Class="XScope.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:controls="clr-namespace:XScope.Controls"
+        xmlns:mdxam="clr-namespace:MdXaml;assembly=MdXaml"
+        mc:Ignorable="d"
+        x:Name="ShellRoot"
+        Title="XScope"
+        Height="720"
+        Width="1200"
+        MinHeight="520"
+        MinWidth="900"
+        Icon="pack://application:,,,/Assets/xscope.ico"
+        Style="{StaticResource MaterialDesignWindow}"
+        TextElement.Foreground="#202124"
+        Background="#FFFFFF"
+        FontFamily="Segoe UI, Microsoft YaHei UI">
+    <Window.Resources>
+        <!-- Google Drive-like overflow (⋮) on project rows -->
+        <Style x:Key="ProjectMoreButton" TargetType="Button">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="2,0,0,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="14"
+                                Width="{TemplateBinding Width}"
+                                Height="{TemplateBinding Height}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E8EAED" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#DADCE0" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ProjectMoreMenu" TargetType="ContextMenu">
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#DADCE0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0,6" />
+            <Setter Property="HasDropShadow" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="16"
+                                                  ShadowDepth="2"
+                                                  Opacity="0.18"
+                                                  Color="#202124" />
+                            </Border.Effect>
+                            <StackPanel IsItemsHost="True"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ProjectMoreMenuItem" TargetType="MenuItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#202124" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}"
+                                Margin="6,1"
+                                CornerRadius="6">
+                            <ContentPresenter ContentSource="Header"
+                                              RecognizesAccessKey="True"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ProjectMoreMenuItemDanger" TargetType="MenuItem" BasedOn="{StaticResource ProjectMoreMenuItem}">
+            <Setter Property="Foreground" Value="#D93025" />
+        </Style>
+    </Window.Resources>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="268" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0"
+                Background="#F8F9FA"
+                BorderBrush="#E8EAED"
+                BorderThickness="0,0,1,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="16,20,16,8">
+                    <TextBlock Text="XScope"
+                               Margin="4,0,0,0"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="#202124" />
+                    <TextBlock Text="{Binding L.MainProjects}"
+                               Margin="4,18,0,4"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#5F6368" />
+                </StackPanel>
+
+                <!-- Bottom rail: full-width quiet Google outline -->
+                <Button DockPanel.Dock="Bottom"
+                        Margin="16,8,16,16"
+                        Height="40"
+                        Padding="0"
+                        HorizontalAlignment="Stretch"
+                        Command="{Binding NewProjectCommand}"
+                        ToolTip="{Binding L.MainNewProjectTip}"
+                        Cursor="Hand"
+                        FontSize="14"
+                        FontWeight="SemiBold">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd"
+                                    Background="#FFFFFF"
+                                    BorderBrush="#DADCE0"
+                                    BorderThickness="1"
+                                    CornerRadius="20"
+                                    Padding="12,0">
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="Plus"
+                                                             Width="18"
+                                                             Height="18"
+                                                             VerticalAlignment="Center"
+                                                             Foreground="#5F6368"
+                                                             Margin="0,0,8,0" />
+                                    <TextBlock Text="{Binding DataContext.L.MainNewProject, RelativeSource={RelativeSource AncestorType=Button}}"
+                                               VerticalAlignment="Center"
+                                               Foreground="#3C4043"
+                                               FontSize="14"
+                                               FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#F8F9FA" />
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#BDC1C6" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#F1F3F4" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+
+                <ListBox ItemsSource="{Binding Projects}"
+                         SelectedItem="{Binding SelectedProject, Mode=TwoWay}"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         Padding="8,4,8,8"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.CanContentScroll="True">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0,1" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="Bd"
+                                                Background="Transparent"
+                                                CornerRadius="24"
+                                                Padding="12,10"
+                                                Margin="4,0">
+                                            <ContentPresenter />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#EFEFEF" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#E8F0FE" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <!-- Google-style row: title + overflow menu (⋮) -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <DockPanel LastChildFill="True">
+                                        <materialDesign:PackIcon DockPanel.Dock="Left"
+                                                                 Kind="Pin"
+                                                                 Width="12"
+                                                                 Height="12"
+                                                                 Margin="0,2,6,0"
+                                                                 VerticalAlignment="Center"
+                                                                 Foreground="#1A73E8"
+                                                                 Visibility="{Binding Pinned, Converter={StaticResource XScopeBoolToVis}}" />
+                                        <TextBlock Text="{Binding Title}"
+                                                   FontSize="14"
+                                                   FontWeight="Medium"
+                                                   Foreground="#3C4043"
+                                                   TextDecorations="None"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   TextWrapping="NoWrap" />
+                                    </DockPanel>
+                                    <TextBlock Text="{Binding Subtitle}"
+                                               Margin="0,2,0,0"
+                                               FontSize="12"
+                                               Foreground="#5F6368"
+                                               TextDecorations="None" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        Style="{StaticResource ProjectMoreButton}"
+                                        VerticalAlignment="Center"
+                                        Click="ProjectMore_OnClick"
+                                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        ToolTip="{Binding DataContext.L.ProjectMoreTip, RelativeSource={RelativeSource AncestorType=Window}}">
+                                    <Button.ContextMenu>
+                                        <ContextMenu Style="{StaticResource ProjectMoreMenu}">
+                                            <MenuItem Style="{StaticResource ProjectMoreMenuItem}"
+                                                      Header="{Binding PlacementTarget.Tag.L.ProjectRename, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      Command="{Binding PlacementTarget.Tag.RenameCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Style="{StaticResource ProjectMoreMenuItem}"
+                                                      Header="{Binding PlacementTarget.Tag.L.ProjectTogglePin, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      Command="{Binding PlacementTarget.Tag.TogglePinCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <Separator Margin="12,4" Background="#E8EAED" />
+                                            <MenuItem Style="{StaticResource ProjectMoreMenuItemDanger}"
+                                                      Header="{Binding PlacementTarget.Tag.L.ProjectDelete, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      Command="{Binding PlacementTarget.Tag.DeleteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
+                                    <materialDesign:PackIcon Kind="DotsVertical"
+                                                             Width="16"
+                                                             Height="16"
+                                                             Foreground="#5F6368" />
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Column="1" Background="#FFFFFF">
+            <!-- Home: ephemeral new project -->
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Width="640"
+                        Margin="0,0,0,48"
+                        Visibility="{Binding IsHome, Converter={StaticResource XScopeBoolToVis}}">
+                <TextBlock Text="XScope"
+                           FontFamily="Bahnschrift, Segoe UI"
+                           FontSize="56"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           Foreground="#202124"
+                           Margin="0,0,0,28" />
+
+                <controls:SearchComposePanel />
+
+                <TextBlock Text="{Binding L.MainSearchSub}"
+                           Margin="0,18,0,0"
+                           HorizontalAlignment="Center"
+                           FontSize="13"
+                           Foreground="#80868B" />
+                <TextBlock Text="{Binding StatusText}"
+                           Margin="0,10,0,0"
+                           HorizontalAlignment="Center"
+                           FontSize="12"
+                           Foreground="#D93025"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- Research project workspace -->
+            <Grid Visibility="{Binding IsResearch, Converter={StaticResource XScopeBoolToVis}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ScrollViewer Grid.Column="0"
+                              Margin="48,40,20,40"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="0,0,12,0">
+                    <StackPanel MaxWidth="680"
+                                HorizontalAlignment="Center">
+                        <!-- Header: product title + meta chips (no dump card) -->
+                        <TextBlock Text="{Binding L.MainResearchHint}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="#80868B" />
+                        <TextBlock Text="{Binding ActiveProjectTitle}"
+                                   Margin="0,6,0,0"
+                                   FontFamily="Bahnschrift, Segoe UI"
+                                   FontSize="30"
+                                   FontWeight="SemiBold"
+                                   Foreground="#202124"
+                                   TextWrapping="Wrap" />
+
+                        <WrapPanel Margin="0,14,0,0">
+                            <Border Margin="0,0,8,8"
+                                    Padding="10,5"
+                                    Background="#F1F3F4"
+                                    CornerRadius="999">
+                                <TextBlock FontSize="12" Foreground="#3C4043">
+                                    <Run Text="{Binding ActiveProviderLabel, Mode=OneWay}" />
+                                </TextBlock>
+                            </Border>
+                            <Border Margin="0,0,8,8"
+                                    Padding="10,5"
+                                    Background="#F1F3F4"
+                                    CornerRadius="999">
+                                <TextBlock FontSize="12" Foreground="#3C4043"
+                                           Text="{Binding ActiveModelLabel, Mode=OneWay}" />
+                            </Border>
+                            <Border Margin="0,0,8,8"
+                                    Padding="10,5"
+                                    Background="#E8F0FE"
+                                    CornerRadius="999">
+                                <TextBlock FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="#174EA6"
+                                           Text="{Binding ActivePrecisionLabel, Mode=OneWay}" />
+                            </Border>
+                        </WrapPanel>
+
+                        <controls:SearchComposePanel Compact="True"
+                                                     Margin="0,8,0,28"
+                                                     HorizontalAlignment="Stretch" />
+
+                        <!-- Stage: busy discovery -->
+                        <Border Padding="0,4,0,0"
+                                Visibility="{Binding Research.ShowBusyStage, Converter={StaticResource XScopeBoolToVis}}">
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="3"
+                                        Height="36"
+                                        CornerRadius="2"
+                                        Background="#1A73E8"
+                                        VerticalAlignment="Center"
+                                        Margin="0,0,14,0" />
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Research.StatusLabel}"
+                                               FontSize="15"
+                                               FontWeight="SemiBold"
+                                               Foreground="#202124"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding L.ResearchBusyHint}"
+                                               Margin="0,4,0,0"
+                                               FontSize="13"
+                                               Foreground="#5F6368"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Stage: pick a direction -->
+                        <Border Visibility="{Binding Research.IsWaitingUser, Converter={StaticResource XScopeBoolToVis}}">
+                            <StackPanel>
+                                <DockPanel LastChildFill="False" Margin="0,0,0,16">
+                                    <Border DockPanel.Dock="Left"
+                                            Width="28"
+                                            Height="28"
+                                            CornerRadius="14"
+                                            Background="#E8F0FE"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,10,0">
+                                        <materialDesign:PackIcon Kind="CrosshairsGps"
+                                                                 Width="16"
+                                                                 Height="16"
+                                                                 HorizontalAlignment="Center"
+                                                                 VerticalAlignment="Center"
+                                                                 Foreground="#1A73E8" />
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding L.ResearchAskTitle}"
+                                                   FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#202124" />
+                                        <TextBlock Text="{Binding Research.ClarifyPrompt}"
+                                                   Margin="0,4,0,0"
+                                                   FontSize="13"
+                                                   Foreground="#5F6368"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DockPanel>
+
+                                <ItemsControl ItemsSource="{Binding Research.Choices}">
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                            <Setter Property="Margin" Value="0,0,0,10" />
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Padding="0"
+                                                    MinHeight="0"
+                                                    Height="Auto"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    VerticalContentAlignment="Stretch"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Cursor="Hand"
+                                                    Focusable="True"
+                                                    Command="{Binding DataContext.Research.ChooseCommand, ElementName=ShellRoot}"
+                                                    CommandParameter="{Binding}">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="Chrome"
+                                                                Background="#FFFFFF"
+                                                                BorderBrush="#E8EAED"
+                                                                BorderThickness="1"
+                                                                CornerRadius="14"
+                                                                Padding="14,14"
+                                                                SnapsToDevicePixels="True">
+                                                            <Border.Effect>
+                                                                <DropShadowEffect BlurRadius="12"
+                                                                                  ShadowDepth="1"
+                                                                                  Opacity="0.06"
+                                                                                  Color="#202124" />
+                                                            </Border.Effect>
+                                                            <ContentPresenter HorizontalAlignment="Stretch"
+                                                                              VerticalAlignment="Center" />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1A73E8" />
+                                                                <Setter TargetName="Chrome" Property="Background" Value="#F8FBFF" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsPressed" Value="True">
+                                                                <Setter TargetName="Chrome" Property="Background" Value="#E8F0FE" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1A73E8" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0"
+                                                            Width="32"
+                                                            Height="32"
+                                                            CornerRadius="10"
+                                                            Background="#F1F3F4"
+                                                            VerticalAlignment="Top"
+                                                            Margin="0,0,12,0">
+                                                        <TextBlock Text="{Binding Badge}"
+                                                                   FontSize="13"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#3C4043"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Label}"
+                                                                   FontWeight="SemiBold"
+                                                                   FontSize="14"
+                                                                   Foreground="#202124"
+                                                                   TextWrapping="Wrap" />
+                                                        <TextBlock Text="{Binding Hint}"
+                                                                   Margin="0,4,0,0"
+                                                                   FontSize="12"
+                                                                   Foreground="#5F6368"
+                                                                   TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                    <materialDesign:PackIcon Grid.Column="2"
+                                                                             Kind="ChevronRight"
+                                                                             Width="18"
+                                                                             Height="18"
+                                                                             VerticalAlignment="Center"
+                                                                             Margin="8,0,0,0"
+                                                                             Foreground="#BDC1C6" />
+                                                </Grid>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Border Margin="0,18,0,0"
+                                        Padding="14"
+                                        Background="#F8F9FA"
+                                        CornerRadius="16">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding L.ResearchAskOrType}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#80868B"
+                                                   Margin="0,0,0,10" />
+                                        <DockPanel LastChildFill="True">
+                                            <Button DockPanel.Dock="Right"
+                                                    Margin="10,0,0,0"
+                                                    MinWidth="96"
+                                                    Height="40"
+                                                    Padding="18,0"
+                                                    Command="{Binding DataContext.Research.ContinueCommand, ElementName=ShellRoot}"
+                                                    Style="{StaticResource MaterialDesignRaisedButton}"
+                                                    Content="{Binding DataContext.L.ResearchContinue, ElementName=ShellRoot}" />
+                                            <TextBox Text="{Binding DataContext.Research.UserReply, ElementName=ShellRoot, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="False"
+                                                     TextWrapping="Wrap"
+                                                     MinHeight="40"
+                                                     VerticalContentAlignment="Center"
+                                                     materialDesign:HintAssist.Hint="{Binding DataContext.L.ResearchReplyHint, ElementName=ShellRoot}"
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" />
+                                        </DockPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Stage: requirements locked -->
+                        <Border Padding="20"
+                                Background="#F8FBFF"
+                                BorderBrush="#D2E3FC"
+                                BorderThickness="1"
+                                CornerRadius="16"
+                                Visibility="{Binding Research.RequirementsLocked, Converter={StaticResource XScopeBoolToVis}}">
+                            <DockPanel LastChildFill="True">
+                                <Border DockPanel.Dock="Left"
+                                        Width="40"
+                                        Height="40"
+                                        CornerRadius="20"
+                                        Background="#E8F0FE"
+                                        VerticalAlignment="Top"
+                                        Margin="0,0,14,0">
+                                    <materialDesign:PackIcon Kind="CheckBold"
+                                                             Width="20"
+                                                             Height="20"
+                                                             HorizontalAlignment="Center"
+                                                             VerticalAlignment="Center"
+                                                             Foreground="#1A73E8" />
+                                </Border>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding L.ResearchLockedTitle}"
+                                               FontSize="15"
+                                               FontWeight="SemiBold"
+                                               Foreground="#174EA6" />
+                                    <TextBlock Text="{Binding Research.SummaryText}"
+                                               Margin="0,8,0,0"
+                                               FontSize="16"
+                                               Foreground="#202124"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding L.ResearchLockedHint}"
+                                               Margin="0,10,0,0"
+                                               FontSize="12"
+                                               Foreground="#5F6368"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- Stage: research report -->
+                        <Border Margin="0,20,0,0"
+                                Padding="20"
+                                Background="#FFFFFF"
+                                BorderBrush="#E8EAED"
+                                BorderThickness="1"
+                                CornerRadius="16"
+                                Visibility="{Binding Research.HasReport, Converter={StaticResource XScopeBoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding L.ResearchReportTitle}"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="#5F6368"
+                                           Margin="0,0,0,12" />
+                                <mdxam:MarkdownScrollViewer Markdown="{Binding Research.ReportMarkdown}"
+                                                            ClickAction="OpenBrowser"
+                                                            FontSize="14"
+                                                            Foreground="#202124"
+                                                            Background="Transparent"
+                                                            MaxHeight="480"
+                                                            Margin="0"
+                                                            Padding="0"
+                                                            VerticalScrollBarVisibility="Auto"
+                                                            HorizontalScrollBarVisibility="Disabled" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Inset so floating settings (top) and version (bottom) stay clear of the rail. -->
+                <controls:ResearchProgressPanel Grid.Column="1"
+                                                Margin="0,68,0,48"
+                                                VerticalAlignment="Stretch"
+                                                DataContext="{Binding Research}" />
+            </Grid>
+
+            <Button HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="0,16,20,0"
+                    Width="44"
+                    Height="44"
+                    Padding="0"
+                    Command="{Binding OpenSettingsCommand}"
+                    ToolTip="{Binding L.MainSettingsTip}"
+                    Cursor="Hand"
+                    Style="{StaticResource MaterialDesignIconButton}"
+                    Panel.ZIndex="5">
+                <Button.Background>
+                    <SolidColorBrush Color="#FFFFFF" Opacity="0.92" />
+                </Button.Background>
+                <Button.Effect>
+                    <DropShadowEffect BlurRadius="10"
+                                      ShadowDepth="1"
+                                      Opacity="0.18"
+                                      Color="#202124" />
+                </Button.Effect>
+                <materialDesign:PackIcon Kind="CogOutline"
+                                         Width="24"
+                                         Height="24"
+                                         Foreground="#5F6368" />
+            </Button>
+
+            <StackPanel HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,20,16"
+                        Opacity="0.72"
+                        Panel.ZIndex="5">
+                <TextBlock Text="{Binding VersionLabel}"
+                           FontSize="11"
+                           Foreground="#5F6368"
+                           HorizontalAlignment="Right" />
+                <TextBlock FontSize="11"
+                           Foreground="#5F6368"
+                           HorizontalAlignment="Right">
+                    <Run Text="{Binding L.MainDeveloperPrefix, Mode=OneWay}" />
+                    <Run Text="{Binding DeveloperLabel, Mode=OneWay}" FontWeight="SemiBold" />
+                </TextBlock>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
